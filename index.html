@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Онлайн-запись в салон красоты</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #fdf1f7, #e7f1ff);
+      color: #1f2933;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 420px;
+      padding: 24px;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 18px;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+      padding: 24px 22px 20px;
+    }
+
+    .card-header {
+      margin-bottom: 18px;
+    }
+
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+
+    .subtitle {
+      margin: 0;
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    .section-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #4b5563;
+      margin: 16px 0 6px;
+    }
+
+    select,
+    input[type="date"] {
+      width: 100%;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      font-size: 14px;
+      background-color: #f9fafb;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+
+    select:focus,
+    input[type="date"]:focus {
+      outline: none;
+      border-color: #6366f1;
+      background-color: #ffffff;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+    }
+
+    .time-slots {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .slot-btn {
+      border-radius: 999px;
+      border: 1px solid #e5e7eb;
+      padding: 6px 4px;
+      font-size: 13px;
+      background-color: #f9fafb;
+      cursor: pointer;
+      transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      text-align: center;
+    }
+
+    .slot-btn:hover {
+      background-color: #eef2ff;
+      border-color: #c7d2fe;
+    }
+
+    .slot-btn.selected {
+      background-color: #4f46e5;
+      color: #ffffff;
+      border-color: #4f46e5;
+      box-shadow: 0 6px 18px rgba(79, 70, 229, 0.3);
+    }
+
+    .slot-btn.disabled {
+      opacity: 0.35;
+      cursor: default;
+      background-color: #f3f4f6;
+    }
+
+    .summary {
+      margin-top: 16px;
+      padding: 10px 11px;
+      border-radius: 10px;
+      background: #f9fafb;
+      font-size: 13px;
+      color: #4b5563;
+      border: 1px solid #e5e7eb;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .summary-row span:first-child {
+      color: #6b7280;
+    }
+
+    .summary-row span:last-child {
+      font-weight: 600;
+    }
+
+    .summary-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .error {
+      margin-top: 8px;
+      font-size: 12px;
+      color: #b91c1c;
+    }
+
+    .success {
+      margin-top: 12px;
+      padding: 10px 11px;
+      border-radius: 10px;
+      font-size: 13px;
+      background-color: #ecfdf3;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+    }
+
+    .actions {
+      margin-top: 18px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-primary {
+      flex: 1;
+      border: none;
+      border-radius: 999px;
+      padding: 10px 16px;
+      background: linear-gradient(135deg, #4f46e5, #6366f1);
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(79, 70, 229, 0.35);
+      transition: transform 0.08s ease, box-shadow 0.1s ease, filter 0.1s ease, opacity 0.15s ease;
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.05);
+      transform: translateY(-1px);
+      box-shadow: 0 14px 30px rgba(79, 70, 229, 0.4);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+      box-shadow: 0 8px 18px rgba(79, 70, 229, 0.32);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.45;
+      cursor: default;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+
+    @media (max-width: 480px) {
+      .page {
+        padding: 16px;
+      }
+
+      .card {
+        padding: 20px 16px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="card" aria-label="Форма онлайн-записи в салон красоты">
+      <header class="card-header">
+        <h1 class="title">Запись на услугу</h1>
+        <p class="subtitle">Выберите процедуру, дату и удобное время.</p>
+      </header>
+
+      <!-- Выбор услуги -->
+      <div>
+        <label for="serviceSelect" class="section-label">Услуга</label>
+        <select id="serviceSelect">
+          <option value="">Выберите услугу...</option>
+          <optgroup label="Депиляция">
+            <option value="laser_depilation">Лазерная депиляция</option>
+            <option value="electric_depilation">Электрическая депиляция</option>
+            <option value="wax_depilation">Восковая депиляция</option>
+          </optgroup>
+          <optgroup label="Массаж">
+            <option value="neck_massage">Массаж шеи</option>
+            <option value="back_massage">Массаж спины</option>
+            <option value="full_body_massage">Массаж всего тела</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- Выбор даты -->
+      <div>
+        <label for="dateInput" class="section-label">Дата</label>
+        <input type="date" id="dateInput" />
+      </div>
+
+      <!-- Выбор времени (слоты) -->
+      <div>
+        <div class="section-label">Доступное время</div>
+        <div id="timeSlots" class="time-slots" aria-label="Доступные временные слоты"></div>
+        <div class="hint">Выберите дату, чтобы увидеть доступные слоты.</div>
+      </div>
+
+      <!-- Резюме выбора -->
+      <div class="summary" aria-live="polite">
+        <div class="summary-row">
+          <span>Услуга:</span>
+          <span id="summaryService">не выбрано</span>
+        </div>
+        <div class="summary-row">
+          <span>Дата:</span>
+          <span id="summaryDate">не выбрано</span>
+        </div>
+        <div class="summary-row">
+          <span>Время:</span>
+          <span id="summaryTime">не выбрано</span>
+        </div>
+      </div>
+
+      <div id="errorMessage" class="error" aria-live="assertive"></div>
+      <div id="successMessage" class="success" style="display: none;" aria-live="polite"></div>
+
+      <div class="actions">
+        <button id="confirmButton" class="btn-primary">Подтвердить запись</button>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const serviceSelect = document.getElementById("serviceSelect");
+      const dateInput = document.getElementById("dateInput");
+      const timeSlotsContainer = document.getElementById("timeSlots");
+      const confirmButton = document.getElementById("confirmButton");
+      const errorMessage = document.getElementById("errorMessage");
+      const successMessage = document.getElementById("successMessage");
+
+      const summaryService = document.getElementById("summaryService");
+      const summaryDate = document.getElementById("summaryDate");
+      const summaryTime = document.getElementById("summaryTime");
+
+      // Простейший набор слотов на день
+      const baseSlots = [
+        "10:00",
+        "11:00",
+        "12:00",
+        "13:00",
+        "14:00",
+        "15:00",
+        "16:00",
+        "17:00",
+        "18:00"
+      ];
+
+      let selectedSlot = null;
+
+      // Установим минимальную дату на сегодня
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      const todayStr = yyyy + "-" + mm + "-" + dd;
+      dateInput.min = todayStr;
+
+      function formatDateForSummary(dateStr) {
+        if (!dateStr) return "не выбрано";
+        const [year, month, day] = dateStr.split("-");
+        return day + "." + month + "." + year;
+      }
+
+      function getServiceLabel(value) {
+        const option = serviceSelect.querySelector('option[value="' + value + '"]');
+        return option ? option.textContent : "не выбрано";
+      }
+
+      function updateSummary() {
+        summaryService.textContent = getServiceLabel(serviceSelect.value);
+        summaryDate.textContent = formatDateForSummary(dateInput.value);
+        summaryTime.textContent = selectedSlot || "не выбрано";
+      }
+
+      function clearSlots() {
+        timeSlotsContainer.innerHTML = "";
+        selectedSlot = null;
+        updateSummary();
+      }
+
+      function isSameDateAsToday(dateStr) {
+        return dateStr === todayStr;
+      }
+
+      function generateSlotsForDate(dateStr) {
+        clearSlots();
+        if (!dateStr) {
+          return;
+        }
+
+        const isToday = isSameDateAsToday(dateStr);
+        const now = new Date();
+
+        baseSlots.forEach(function (time) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.textContent = time;
+          btn.className = "slot-btn";
+
+          let disabled = false;
+
+          if (isToday) {
+            const [hours, minutes] = time.split(":").map(Number);
+            const slotDate = new Date();
+            slotDate.setHours(hours, minutes, 0, 0);
+            if (slotDate <= now) {
+              disabled = true;
+            }
+          }
+
+          if (disabled) {
+            btn.classList.add("disabled");
+            btn.disabled = true;
+          } else {
+            btn.addEventListener("click", function () {
+              if (btn.classList.contains("disabled")) return;
+
+              // снять выделение со всех
+              Array.from(timeSlotsContainer.children).forEach(function (child) {
+                child.classList.remove("selected");
+              });
+
+              btn.classList.add("selected");
+              selectedSlot = time;
+              errorMessage.textContent = "";
+              successMessage.style.display = "none";
+              updateSummary();
+            });
+          }
+
+          timeSlotsContainer.appendChild(btn);
+        });
+      }
+
+      serviceSelect.addEventListener("change", function () {
+        errorMessage.textContent = "";
+        successMessage.style.display = "none";
+        updateSummary();
+      });
+
+      dateInput.addEventListener("change", function () {
+        errorMessage.textContent = "";
+        successMessage.style.display = "none";
+        generateSlotsForDate(dateInput.value);
+        updateSummary();
+      });
+
+      confirmButton.addEventListener("click", function () {
+        errorMessage.textContent = "";
+        successMessage.style.display = "none";
+
+        const service = serviceSelect.value;
+        const date = dateInput.value;
+        const slot = selectedSlot;
+
+        const errors = [];
+        if (!service) {
+          errors.push("Выберите услугу.");
+        }
+        if (!date || !slot) {
+          errors.push("Выберите дату и время.");
+        }
+
+        if (errors.length > 0) {
+          errorMessage.textContent = errors.join(" ");
+          return;
+        }
+
+        // "Создаём" запись — здесь просто сообщение об успехе
+        const formattedDate = formatDateForSummary(date);
+        const serviceLabel = getServiceLabel(service);
+
+        successMessage.textContent =
+          "Запись создана: " +
+          serviceLabel +
+          ", " +
+          formattedDate +
+          ", " +
+          slot +
+          ". Ждём вас в салоне!";
+        successMessage.style.display = "block";
+      });
+
+      // Инициализируем слоты на сегодня по умолчанию
+      generateSlotsForDate(todayStr);
+      dateInput.value = todayStr;
+      updateSummary();
+    })();
+  </script>
+</body>
+</html>
+
