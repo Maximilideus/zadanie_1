@@ -3,6 +3,7 @@ import { ServiceSelector } from "./components/ServiceSelector.jsx";
 import { DateSelector } from "./components/DateSelector.jsx";
 import { TimeSlots } from "./components/TimeSlots.jsx";
 import { Summary } from "./components/Summary.jsx";
+import { showSuccessToast, showErrorToast } from "./components/CustomToast.jsx";
 
 const BASE_SLOTS = [
   "10:00",
@@ -73,24 +74,23 @@ function buildSlotsForDate(dateStr, todayStr) {
 
 export function App() {
   const todayStr = useMemo(() => getTodayStr(), []);
-  const [service, setService] = useState("");
-  const [date, setDate] = useState(todayStr);
-  const [selectedSlot, setSelectedSlot] = useState(null);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [formData, setFormData] = useState({
+    service: "",
+    date: todayStr,
+    selectedSlot: null,
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [history, setHistory] = useState([]);
-
   const serviceSelectRef = useRef(null);
 
   const slots = useMemo(
-    () => buildSlotsForDate(date, todayStr),
-    [date, todayStr]
+    () => buildSlotsForDate(formData.date, todayStr),
+    [formData.date, todayStr]
   );
 
-  const summaryService = getServiceLabel(service);
-  const summaryDate = formatDateForSummary(date);
-  const summaryTime = selectedSlot || "не выбрано";
+  const summaryService = getServiceLabel(formData.service);
+  const summaryDate = formatDateForSummary(formData.date);
+  const summaryTime = formData.selectedSlot || "не выбрано";
 
   useEffect(() => {
     try {
@@ -111,31 +111,23 @@ export function App() {
   }, []);
 
   const handleConfirm = (event) => {
-    if (isSubmitting) {
-      return;
-    }
+    if (isSubmitting) return;
 
     event.preventDefault();
-    setError("");
-    setSuccess("");
 
     const problems = [];
-    if (!service) {
-      problems.push("Выберите услугу.");
-    }
-    if (!date || !selectedSlot) {
-      problems.push("Выберите дату и время.");
-    }
+    if (!formData.service) problems.push("Выберите услугу.");
+    if (!formData.date || !formData.selectedSlot) problems.push("Выберите дату и время.");
 
     if (problems.length > 0) {
-      setError(problems.join(" "));
+      showErrorToast(problems.join(" "));
       return;
     }
 
     const newBooking = {
       service: summaryService,
-      date,
-      time: selectedSlot,
+      date: formData.date,
+      time: formData.selectedSlot,
     };
 
     const isDuplicate = history.some(
@@ -143,37 +135,31 @@ export function App() {
     );
 
     if (isDuplicate) {
-      setError("Это время уже занято. Пожалуйста, выберите другое.");
+      showErrorToast("Это время уже занято. Пожалуйста, выберите другое.");
       return;
     }
 
     setIsSubmitting(true);
-
     const updatedHistory = [newBooking, ...history].slice(0, 5);
 
     try {
       window.localStorage.setItem(SINGLE_BOOKING_KEY, JSON.stringify(newBooking));
-      window.localStorage.setItem(
-        HISTORY_STORAGE_KEY,
-        JSON.stringify(updatedHistory)
-      );
+      window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
     } catch (storageError) {
-      // Локальное логирование, чтобы не ломать UX
+      // eslint-disable-next-line no-console
       console.error("Не удалось сохранить запись в localStorage:", storageError);
     }
 
-    // Для проверки данных записи
     // eslint-disable-next-line no-console
     console.log("Создана запись:", newBooking);
 
-    const message = `Запись создана: ${summaryService}, ${summaryDate}, ${selectedSlot}. Ждём вас в салоне!`;
-    setSuccess(message);
+    showSuccessToast(
+      `Запись создана: ${summaryService}, ${summaryDate}, ${formData.selectedSlot}. Ждём вас в салоне!`
+    );
     setHistory(updatedHistory);
 
     // Очистка полей после успешной записи
-    setService("");
-    setDate(todayStr);
-    setSelectedSlot(null);
+    setFormData({ service: "", date: todayStr, selectedSlot: null });
 
     // Возврат фокуса на выбор услуги
     if (serviceSelectRef.current) {
@@ -181,28 +167,19 @@ export function App() {
     }
 
     // Разблокировка кнопки через короткую паузу
-    window.setTimeout(() => {
-      setIsSubmitting(false);
-    }, 1500);
+    window.setTimeout(() => setIsSubmitting(false), 1500);
   };
 
   const handleServiceChange = (value) => {
-    setService(value);
-    setError("");
-    setSuccess("");
+    setFormData((prev) => ({ ...prev, service: value }));
   };
 
   const handleDateChange = (value) => {
-    setDate(value);
-    setSelectedSlot(null);
-    setError("");
-    setSuccess("");
+    setFormData((prev) => ({ ...prev, date: value, selectedSlot: null }));
   };
 
   const handleSlotSelect = (time) => {
-    setSelectedSlot(time);
-    setError("");
-    setSuccess("");
+    setFormData((prev) => ({ ...prev, selectedSlot: time }));
   };
 
   return (
@@ -218,18 +195,18 @@ export function App() {
             </header>
 
             <ServiceSelector
-              value={service}
+              value={formData.service}
               onChange={handleServiceChange}
               selectRef={serviceSelectRef}
             />
             <DateSelector
-              value={date}
+              value={formData.date}
               min={todayStr}
               onChange={handleDateChange}
             />
             <TimeSlots
               slots={slots}
-              selectedSlot={selectedSlot ?? ""}
+              selectedSlot={formData.selectedSlot ?? ""}
               onSelect={handleSlotSelect}
             />
 
@@ -238,23 +215,6 @@ export function App() {
               dateLabel={summaryDate}
               timeLabel={summaryTime}
             />
-
-            <div
-              id="errorMessage"
-              className="error"
-              aria-live="assertive"
-            >
-              {error}
-            </div>
-            {success && (
-              <div
-                id="successMessage"
-                className="success"
-                aria-live="polite"
-              >
-                {success}
-              </div>
-            )}
 
             <div className="actions">
               <button

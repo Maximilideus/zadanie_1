@@ -267,6 +267,34 @@ input[type="date"]:focus {
   color: #b38a96;
 }
 
+/* Кастомные стили для toast-уведомлений */
+.custom-toast-success {
+  background: linear-gradient(135deg, #ffd6e8, #ffc0d9) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+  font-family: Arial, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 8px 20px rgba(199, 122, 140, 0.3) !important;
+  border: 1px solid rgba(199, 122, 140, 0.4) !important;
+}
+
+.custom-toast-error {
+  background: linear-gradient(135deg, #f5e6d3, #e8d4b8) !important;
+  color: #5d4037 !important;
+  border-radius: 12px !important;
+  font-family: Arial, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  box-shadow: 0 8px 20px rgba(141, 110, 99, 0.25) !important;
+  border: 1px solid rgba(141, 110, 99, 0.3) !important;
+}
+
+.custom-toast-body {
+  font-family: Arial, sans-serif !important;
+  padding: 4px 0 !important;
+}
+
 @media (max-width: 480px) {
   .page {
     padding: 16px;
