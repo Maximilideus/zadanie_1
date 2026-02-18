@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 
-export function ServiceSelector({ value, onChange }) {
+export function ServiceSelector({ value, onChange, selectRef }) {
   return (
     <div>
       <label htmlFor="serviceSelect" className="section-label">
@@ -8,6 +8,7 @@ export function ServiceSelector({ value, onChange }) {
       </label>
       <select
         id="serviceSelect"
+        ref={selectRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -30,5 +31,9 @@ export function ServiceSelector({ value, onChange }) {
 ServiceSelector.propTypes = {
   value: PropTypes.string.isRequired,
   onChange: PropTypes.func.isRequired,
+  selectRef: PropTypes.oneOfType([
+    PropTypes.func,
+    PropTypes.shape({ current: PropTypes.any }),
+  ]),
 };
 

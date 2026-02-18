@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ServiceSelector } from "./components/ServiceSelector.jsx";
 import { DateSelector } from "./components/DateSelector.jsx";
 import { TimeSlots } from "./components/TimeSlots.jsx";
@@ -75,6 +75,9 @@ export function App() {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const serviceSelectRef = useRef(null);
 
   const slots = useMemo(
     () => buildSlotsForDate(date, todayStr),
@@ -86,6 +89,10 @@ export function App() {
   const summaryTime = selectedSlot || "не выбрано";
 
   const handleConfirm = (event) => {
+    if (isSubmitting) {
+      return;
+    }
+
     event.preventDefault();
     setError("");
     setSuccess("");
@@ -102,6 +109,8 @@ export function App() {
       setError(problems.join(" "));
       return;
     }
+
+    setIsSubmitting(true);
 
     const booking = {
       service: summaryService,
@@ -122,6 +131,21 @@ export function App() {
 
     const message = `Запись создана: ${summaryService}, ${summaryDate}, ${selectedSlot}. Ждём вас в салоне!`;
     setSuccess(message);
+
+    // Очистка полей после успешной записи
+    setService("");
+    setDate(todayStr);
+    setSelectedSlot(null);
+
+    // Возврат фокуса на выбор услуги
+    if (serviceSelectRef.current) {
+      serviceSelectRef.current.focus();
+    }
+
+    // Разблокировка кнопки через короткую паузу
+    window.setTimeout(() => {
+      setIsSubmitting(false);
+    }, 1500);
   };
 
   const handleServiceChange = (value) => {
@@ -154,7 +178,11 @@ export function App() {
             </p>
           </header>
 
-          <ServiceSelector value={service} onChange={handleServiceChange} />
+          <ServiceSelector
+            value={service}
+            onChange={handleServiceChange}
+            selectRef={serviceSelectRef}
+          />
           <DateSelector value={date} min={todayStr} onChange={handleDateChange} />
           <TimeSlots
             slots={slots}
@@ -191,8 +219,9 @@ export function App() {
               className="btn-primary"
               type="button"
               onClick={handleConfirm}
+              disabled={isSubmitting}
             >
-              Подтвердить запись
+              Записаться
             </button>
           </div>
         </section>
