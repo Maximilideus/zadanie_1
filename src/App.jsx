@@ -48,27 +48,37 @@ function getServiceLabel(value) {
   return SERVICE_LABELS[value] ?? "не выбрано";
 }
 
-function buildSlotsForDate(dateStr, todayStr) {
+function buildSlotsForDate(dateStr, todayStr, serviceValue, history) {
   if (!dateStr) {
-    return BASE_SLOTS.map((time) => ({ time, disabled: false }));
+    return BASE_SLOTS.map((time) => ({ time, disabled: false, isBooked: false }));
   }
 
   const isToday = dateStr === todayStr;
   const now = new Date();
+  const currentServiceLabel = getServiceLabel(serviceValue);
 
   return BASE_SLOTS.map((time) => {
-    if (!isToday) {
-      return { time, disabled: false };
+    const isBooked =
+      !!serviceValue &&
+      history.some(
+        (item) =>
+          item.service === currentServiceLabel &&
+          item.date === dateStr &&
+          item.time === time
+      );
+
+    let isPast = false;
+
+    if (isToday) {
+      const [hours, minutes] = time.split(":").map(Number);
+      const slotDate = new Date();
+      slotDate.setHours(hours, minutes, 0, 0);
+      if (slotDate <= now) {
+        isPast = true;
+      }
     }
 
-    const [hours, minutes] = time.split(":").map(Number);
-    const slotDate = new Date();
-    slotDate.setHours(hours, minutes, 0, 0);
-
-    return {
-      time,
-      disabled: slotDate <= now,
-    };
+    return { time, isPast, isBooked };
   });
 }
 
@@ -84,8 +94,8 @@ export function App() {
   const serviceSelectRef = useRef(null);
 
   const slots = useMemo(
-    () => buildSlotsForDate(formData.date, todayStr),
-    [formData.date, todayStr]
+    () => buildSlotsForDate(formData.date, todayStr, formData.service, history),
+    [formData.date, todayStr, formData.service, history]
   );
 
   const summaryService = getServiceLabel(formData.service);
@@ -131,11 +141,16 @@ export function App() {
     };
 
     const isDuplicate = history.some(
-      (item) => item.date === newBooking.date && item.time === newBooking.time
+      (item) =>
+        item.service === newBooking.service &&
+        item.date === newBooking.date &&
+        item.time === newBooking.time
     );
 
     if (isDuplicate) {
-      showErrorToast("Это время уже занято. Пожалуйста, выберите другое.");
+      showErrorToast(
+        `Вы уже записаны на ${summaryService} в ${summaryDate} в ${formData.selectedSlot}. Пожалуйста, выберите другое время.`
+      );
       return;
     }
 
@@ -182,6 +197,12 @@ export function App() {
     setFormData((prev) => ({ ...prev, selectedSlot: time }));
   };
 
+  const handleBookedSlotClick = () => {
+    showErrorToast(
+      "К сожалению, это время уже занято другим клиентом. Пожалуйста, выберите другой слот."
+    );
+  };
+
   return (
     <div className="root-bg">
       <main className="page">
@@ -208,6 +229,7 @@ export function App() {
               slots={slots}
               selectedSlot={formData.selectedSlot ?? ""}
               onSelect={handleSlotSelect}
+              onBookedClick={handleBookedSlotClick}
             />
 
             <Summary

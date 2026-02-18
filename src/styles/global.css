@@ -135,6 +135,25 @@ input[type="date"]:focus {
   background-color: #f3f4f6;
 }
 
+.slot-btn.booked {
+  opacity: 0.9;
+  cursor: pointer;
+  background: repeating-linear-gradient(
+      135deg,
+      #f5e4ea,
+      #f5e4ea 4px,
+      #f0d6de 4px,
+      #f0d6de 8px
+    );
+  border-color: #e2c0cc;
+  color: #9b6b7a;
+}
+
+.slot-btn.booked:hover {
+  opacity: 1;
+  border-color: #d4a3b2;
+}
+
 .summary {
   margin-top: 16px;
   padding: 10px 11px;

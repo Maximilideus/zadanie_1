@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 
-export function TimeSlots({ slots, selectedSlot, onSelect }) {
+export function TimeSlots({ slots, selectedSlot, onSelect, onBookedClick }) {
   return (
     <div>
       <div className="section-label">Доступное время</div>
@@ -15,14 +15,20 @@ export function TimeSlots({ slots, selectedSlot, onSelect }) {
             type="button"
             className={[
               "slot-btn",
-              slot.disabled ? "disabled" : "",
-              !slot.disabled && selectedSlot === slot.time ? "selected" : "",
+              slot.isPast ? "disabled" : "",
+              slot.isBooked ? "booked" : "",
+              !slot.isPast && !slot.isBooked && selectedSlot === slot.time
+                ? "selected"
+                : "",
             ]
               .filter(Boolean)
               .join(" ")}
-            disabled={slot.disabled}
+            disabled={slot.isPast}
             onClick={() => {
-              if (slot.disabled) return;
+              if (slot.isBooked) {
+                if (onBookedClick) onBookedClick(slot);
+                return;
+              }
               onSelect(slot.time);
             }}
           >
@@ -30,7 +36,7 @@ export function TimeSlots({ slots, selectedSlot, onSelect }) {
           </button>
         ))}
       </div>
-      <div className="hint">Выберите дату, чтобы увидеть доступные слоты.</div>
+      <div className="hint">Выберите дату и услугу, чтобы увидеть доступные слоты.</div>
     </div>
   );
 }
@@ -39,10 +45,11 @@ TimeSlots.propTypes = {
   slots: PropTypes.arrayOf(
     PropTypes.shape({
       time: PropTypes.string.isRequired,
-      disabled: PropTypes.bool.isRequired,
+      isPast: PropTypes.bool.isRequired,
+      isBooked: PropTypes.bool,
     })
   ).isRequired,
   selectedSlot: PropTypes.string,
   onSelect: PropTypes.func.isRequired,
+  onBookedClick: PropTypes.func,
 };
-
