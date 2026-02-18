@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ServiceSelector } from "./components/ServiceSelector.jsx";
 import { DateSelector } from "./components/DateSelector.jsx";
 import { TimeSlots } from "./components/TimeSlots.jsx";
@@ -24,6 +24,9 @@ const SERVICE_LABELS = {
   back_massage: "Массаж спины",
   full_body_massage: "Массаж всего тела",
 };
+
+const SINGLE_BOOKING_KEY = "booking";
+const HISTORY_STORAGE_KEY = "bookingHistory";
 
 function getTodayStr() {
   const today = new Date();
@@ -76,6 +79,7 @@ export function App() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [history, setHistory] = useState([]);
 
   const serviceSelectRef = useRef(null);
 
@@ -87,6 +91,24 @@ export function App() {
   const summaryService = getServiceLabel(service);
   const summaryDate = formatDateForSummary(date);
   const summaryTime = selectedSlot || "не выбрано";
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setHistory(parsed);
+        }
+      }
+    } catch (storageError) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "Не удалось прочитать историю записей из localStorage:",
+        storageError
+      );
+    }
+  }, []);
 
   const handleConfirm = (event) => {
     if (isSubmitting) {
@@ -110,16 +132,31 @@ export function App() {
       return;
     }
 
-    setIsSubmitting(true);
-
-    const booking = {
+    const newBooking = {
       service: summaryService,
       date,
       time: selectedSlot,
     };
 
+    const isDuplicate = history.some(
+      (item) => item.date === newBooking.date && item.time === newBooking.time
+    );
+
+    if (isDuplicate) {
+      setError("Это время уже занято. Пожалуйста, выберите другое.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const updatedHistory = [newBooking, ...history].slice(0, 5);
+
     try {
-      window.localStorage.setItem("booking", JSON.stringify(booking));
+      window.localStorage.setItem(SINGLE_BOOKING_KEY, JSON.stringify(newBooking));
+      window.localStorage.setItem(
+        HISTORY_STORAGE_KEY,
+        JSON.stringify(updatedHistory)
+      );
     } catch (storageError) {
       // Локальное логирование, чтобы не ломать UX
       console.error("Не удалось сохранить запись в localStorage:", storageError);
@@ -127,10 +164,11 @@ export function App() {
 
     // Для проверки данных записи
     // eslint-disable-next-line no-console
-    console.log("Создана запись:", booking);
+    console.log("Создана запись:", newBooking);
 
     const message = `Запись создана: ${summaryService}, ${summaryDate}, ${selectedSlot}. Ждём вас в салоне!`;
     setSuccess(message);
+    setHistory(updatedHistory);
 
     // Очистка полей после успешной записи
     setService("");
@@ -171,59 +209,88 @@ export function App() {
     <div className="root-bg">
       <main className="page">
         <section className="card" aria-label="Форма онлайн-записи в салон красоты">
-          <header className="card-header">
-            <h1 className="title">Запись на услугу</h1>
-            <p className="subtitle">
-              Выберите процедуру, дату и удобное время.
-            </p>
-          </header>
+          <form onSubmit={handleConfirm}>
+            <header className="card-header">
+              <h1 className="title">Запись на услугу</h1>
+              <p className="subtitle">
+                Выберите процедуру, дату и удобное время.
+              </p>
+            </header>
 
-          <ServiceSelector
-            value={service}
-            onChange={handleServiceChange}
-            selectRef={serviceSelectRef}
-          />
-          <DateSelector value={date} min={todayStr} onChange={handleDateChange} />
-          <TimeSlots
-            slots={slots}
-            selectedSlot={selectedSlot ?? ""}
-            onSelect={handleSlotSelect}
-          />
+            <ServiceSelector
+              value={service}
+              onChange={handleServiceChange}
+              selectRef={serviceSelectRef}
+            />
+            <DateSelector
+              value={date}
+              min={todayStr}
+              onChange={handleDateChange}
+            />
+            <TimeSlots
+              slots={slots}
+              selectedSlot={selectedSlot ?? ""}
+              onSelect={handleSlotSelect}
+            />
 
-          <Summary
-            serviceLabel={summaryService}
-            dateLabel={summaryDate}
-            timeLabel={summaryTime}
-          />
+            <Summary
+              serviceLabel={summaryService}
+              dateLabel={summaryDate}
+              timeLabel={summaryTime}
+            />
 
-          <div
-            id="errorMessage"
-            className="error"
-            aria-live="assertive"
-          >
-            {error}
-          </div>
-          {success && (
             <div
-              id="successMessage"
-              className="success"
-              aria-live="polite"
+              id="errorMessage"
+              className="error"
+              aria-live="assertive"
             >
-              {success}
+              {error}
             </div>
-          )}
+            {success && (
+              <div
+                id="successMessage"
+                className="success"
+                aria-live="polite"
+              >
+                {success}
+              </div>
+            )}
 
-          <div className="actions">
-            <button
-              id="confirmButton"
-              className="btn-primary"
-              type="button"
-              onClick={handleConfirm}
-              disabled={isSubmitting}
-            >
-              Записаться
-            </button>
-          </div>
+            <div className="actions">
+              <button
+                id="confirmButton"
+                className="btn-primary"
+                type="submit"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Сохраняем…" : "Записаться"}
+              </button>
+            </div>
+
+            {history.length > 0 && (
+              <section
+                className="history"
+                aria-label="История последних записей"
+              >
+                <h2 className="history-title">Последние записи</h2>
+                <ul className="history-list">
+                  {history.map((entry, index) => (
+                    <li
+                      key={`${entry.date}-${entry.time}-${entry.service}-${index}`}
+                      className="history-item"
+                    >
+                      <span className="history-item-service">
+                        {entry.service}
+                      </span>
+                      <span className="history-item-meta">
+                        {formatDateForSummary(entry.date)}, {entry.time}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </form>
         </section>
       </main>
     </div>

@@ -227,6 +227,46 @@ input[type="date"]:focus {
   color: #9ca3af;
 }
 
+.history {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(244, 193, 203, 0.8);
+}
+
+.history-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #a06a7a;
+}
+
+.history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(244, 193, 203, 0.45);
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-item-service {
+  font-weight: 600;
+  color: #7b4b59;
+}
+
+.history-item-meta {
+  color: #b38a96;
+}
+
 @media (max-width: 480px) {
   .page {
     padding: 16px;
