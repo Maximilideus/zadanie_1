@@ -1228,3 +1228,19 @@ input[type="date"]:hover {
   display: block;
 }
 .back-btn:hover { color: var(--rose-deep); }
+
+/* — OTP code input — */
+.auth-input--code {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  text-align: center;
+  padding: 14px 20px;
+}
+
+.auth-resend-wrap {
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin-top: 12px;
+}
