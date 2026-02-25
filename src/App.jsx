@@ -26,6 +26,15 @@ const SERVICE_LABELS = {
   full_body_massage: "Массаж всего тела",
 };
 
+const MASTERS_BY_SERVICE = {
+  laser_depilation: ["Анна", "Мария"],
+  electric_depilation: ["Мария"],
+  wax_depilation: ["Анна", "Елена"],
+  neck_massage: ["Елена", "Дмитрий"],
+  back_massage: ["Дмитрий"],
+  full_body_massage: ["Елена", "Дмитрий"],
+};
+
 const SINGLE_BOOKING_KEY = "booking";
 const HISTORY_STORAGE_KEY = "bookingHistory";
 
@@ -73,7 +82,7 @@ function buildSlotsForDate(dateStr, todayStr, serviceValue, history) {
       const [hours, minutes] = time.split(":").map(Number);
       const slotDate = new Date();
       slotDate.setHours(hours, minutes, 0, 0);
-      if (slotDate < now) {
+      if (slotDate <= now) {
         isPast = true;
       }
     }
