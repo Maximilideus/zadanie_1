@@ -73,7 +73,7 @@ function buildSlotsForDate(dateStr, todayStr, serviceValue, history) {
       const [hours, minutes] = time.split(":").map(Number);
       const slotDate = new Date();
       slotDate.setHours(hours, minutes, 0, 0);
-      if (slotDate <= now) {
+      if (slotDate < now) {
         isPast = true;
       }
     }
