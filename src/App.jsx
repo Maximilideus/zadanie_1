@@ -4,6 +4,8 @@ import { MasterSelector } from "./components/MasterSelector.jsx";
 import { DateSelector } from "./components/DateSelector.jsx";
 import { TimeSlots } from "./components/TimeSlots.jsx";
 import { Summary } from "./components/Summary.jsx";
+import { AuthForm } from "./components/AuthForm.jsx";
+import { LandingPage } from "./components/LandingPage.jsx";
 import { showSuccessToast, showErrorToast } from "./components/CustomToast.jsx";
 import { supabase } from "./supabase.js";
 
@@ -77,12 +79,17 @@ function buildSlotsForDate(dateStr, todayStr, masterValue, history) {
   if (!dateStr) {
     return BASE_SLOTS.map((time) => ({ time, isPast: false, isBooked: false }));
   }
+
   const isToday = dateStr === todayStr;
   const now = new Date();
   now.setSeconds(0, 0);
+
   const masterBookings = masterValue
-    ? history.filter((item) => !item.cancelled && item.master === masterValue && item.date === dateStr)
+    ? history.filter(
+        (item) => !item.cancelled && item.master === masterValue && item.date === dateStr
+      )
     : [];
+
   return BASE_SLOTS.map((time) => {
     const slotStart = timeToMinutes(time);
     const isBooked  = masterBookings.some((item) => {
@@ -90,6 +97,7 @@ function buildSlotsForDate(dateStr, todayStr, masterValue, history) {
       const itemEnd   = itemStart + (item.duration ?? 60);
       return slotStart >= itemStart && slotStart < itemEnd;
     });
+
     let isPast = false;
     if (isToday) {
       const [hours, minutes] = time.split(":").map(Number);
@@ -97,6 +105,7 @@ function buildSlotsForDate(dateStr, todayStr, masterValue, history) {
       slotDate.setHours(hours, minutes, 0, 0);
       if (slotDate < now) isPast = true;
     }
+
     return { time, isPast, isBooked };
   });
 }
@@ -115,16 +124,31 @@ export function calcRating(masterName, ratingsMap) {
 export function App() {
   const todayStr = useMemo(() => getTodayStr(), []);
 
-  const [formData, setFormData] = useState({
+  // undefined = ещё проверяем сессию, null = не авторизован, object = авторизован
+  const [session,     setSession]     = useState(undefined);
+  const [showBooking, setShowBooking] = useState(false); // false = лендинг, true = форма записи
+  const [formData,    setFormData]    = useState({
     service: "", master: "", date: todayStr, selectedSlot: null, duration: null,
   });
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading,    setIsLoading]    = useState(true);
   const [history,      setHistory]      = useState([]);
-  const [ratingsRows,  setRatingsRows]  = useState([]);
+  const [ratingsMap,   setRatingsMap]   = useState({});
 
   const serviceSelectRef = useRef(null);
+
+  // ─── Следим за сессией ────────────────────────────────────────────────────
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const availableMasters   = useMemo(() => MASTERS_BY_SERVICE[formData.service] ?? [], [formData.service]);
   const availableDurations = useMemo(() => SERVICES[formData.service]?.durations ?? [], [formData.service]);
@@ -135,15 +159,6 @@ export function App() {
     [formData.date, todayStr, formData.master, history]
   );
 
-  // ratingsMap для MasterSelector: { "Анна": 4.8, "Мария": 4.5, ... }
-  const ratingsMap = useMemo(() => {
-    const map = {};
-    Object.keys(MASTERS_DATA).forEach((name) => {
-      map[name] = calcRating(name, ratingsRows);
-    });
-    return map;
-  }, [ratingsRows]);
-
   const summaryService  = getServiceLabel(formData.service);
   const summaryMaster   = formData.master || "не выбрано";
   const summaryDate     = formatDateForSummary(formData.date);
@@ -151,12 +166,14 @@ export function App() {
   const summaryDuration = formData.duration ? `${formData.duration} мин` : "не выбрано";
   const summaryPrice    = servicePrice ? `${servicePrice.toLocaleString("ru-RU")} ₽` : "не выбрано";
 
-  // Загрузка данных из Supabase при старте
+  // ─── Загрузка данных — только когда пользователь авторизован ─────────────
   useEffect(() => {
+    if (!session) return; // не авторизован — не грузим
+
     async function loadData() {
       setIsLoading(true);
       try {
-        // Последние 5 записей из общей таблицы
+        // Только свои записи — RLS автоматически фильтрует по user_id
         const { data: bookings, error: bookingsError } = await supabase
           .from("bookings")
           .select("*")
@@ -166,25 +183,33 @@ export function App() {
         if (bookingsError) throw bookingsError;
         if (bookings) setHistory(bookings);
 
-        // Все оценки мастеров
+        // Оценки всех мастеров — общие для всех пользователей
         const { data: ratings, error: ratingsError } = await supabase
           .from("master_ratings")
           .select("master_name, score");
 
         if (ratingsError) throw ratingsError;
-        if (ratings) setRatingsRows(ratings);
 
+        if (ratings) {
+          const map = {};
+          ratings.forEach(({ master_name, score }) => {
+            if (!map[master_name]) map[master_name] = [];
+            map[master_name].push(score);
+          });
+          setRatingsMap(map);
+        }
       } catch (e) {
         console.error("Ошибка загрузки данных:", e);
-        showErrorToast("Не удалось загрузить данные. Проверьте соединение.");
+        showErrorToast("Не удалось загрузить данные.");
       } finally {
         setIsLoading(false);
       }
     }
-    loadData();
-  }, []);
 
-  // Создание записи
+    loadData();
+  }, [session]); // перезагружаем при входе/выходе
+
+  // ─── Создание записи ──────────────────────────────────────────────────────
   const handleConfirm = async (event) => {
     if (isSubmitting) return;
     event.preventDefault();
@@ -223,6 +248,7 @@ export function App() {
         price:     servicePrice,
         cancelled: false,
         rated:     false,
+        user_id:   session.user.id, // привязываем к текущему пользователю
       })
       .select()
       .single();
@@ -241,39 +267,41 @@ export function App() {
     window.setTimeout(() => setIsSubmitting(false), 1500);
   };
 
-  // Отмена записи
+  // ─── Отмена записи ────────────────────────────────────────────────────────
   const handleCancelBooking = async (bookingId) => {
     const { error } = await supabase
       .from("bookings")
       .update({ cancelled: true })
       .eq("id", bookingId);
 
-    if (error) {
-      console.error("Ошибка отмены:", error);
-      showErrorToast("Не удалось отменить запись.");
-      return;
-    }
+    if (error) { showErrorToast("Не удалось отменить запись."); return; }
     setHistory((prev) => prev.map((item) => item.id === bookingId ? { ...item, cancelled: true } : item));
     showSuccessToast("Запись отменена.");
   };
 
-  // Оценка мастера
+  // ─── Оценка мастера ───────────────────────────────────────────────────────
   const handleRateMaster = async (bookingId, masterName, score) => {
     const { error: ratingError } = await supabase
       .from("master_ratings")
       .insert({ master_name: masterName, score, booking_id: bookingId });
 
-    if (ratingError) {
-      console.error("Ошибка сохранения оценки:", ratingError);
-      showErrorToast("Не удалось сохранить оценку.");
-      return;
-    }
+    if (ratingError) { showErrorToast("Не удалось сохранить оценку."); return; }
 
     await supabase.from("bookings").update({ rated: true }).eq("id", bookingId);
 
     setHistory((prev) => prev.map((item) => item.id === bookingId ? { ...item, rated: true } : item));
-    setRatingsRows((prev) => [...prev, { master_name: masterName, score }]);
+    setRatingsMap((prev) => ({
+      ...prev,
+      [masterName]: [...(prev[masterName] ?? []), score],
+    }));
     showSuccessToast(`Спасибо за оценку! ${masterName} получает ваши ★`);
+  };
+
+  // ─── Выход из аккаунта ────────────────────────────────────────────────────
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setHistory([]);
+    setRatingsMap({});
   };
 
   const handleServiceChange   = (value) => setFormData((prev) => ({ ...prev, service: value, master: "", duration: null }));
@@ -286,13 +314,36 @@ export function App() {
   const handleDurationChange  = (dur)  => setFormData((prev) => ({ ...prev, duration: dur }));
   const handleBookedSlotClick = ()     => showErrorToast("Это время уже занято. Пожалуйста, выберите другой слот.");
 
+  // ─── Пока проверяем сессию — пустой экран ────────────────────────────────
+  if (session === undefined) return null;
+
+  // ─── Лендинг — стартовый экран ────────────────────────────────────────────
+  if (!showBooking) {
+    return <LandingPage onBook={() => setShowBooking(true)} />;
+  }
+
+  // ─── Не авторизован — форма входа ─────────────────────────────────────────
+  if (!session) {
+    return <AuthForm onBack={() => setShowBooking(false)} />;
+  }
+
+  // ─── Авторизован — форма записи ───────────────────────────────────────────
   return (
     <div className="root-bg">
       <main className="page">
         <section className="card" aria-label="Форма онлайн-записи в салон красоты">
           <form onSubmit={handleConfirm}>
             <header className="card-header">
-              <h1 className="title">Запись на услугу</h1>
+              <div className="header-top">
+                <h1 className="title">Запись на услугу</h1>
+                {/* Email пользователя + кнопка выхода */}
+                <div className="user-info">
+                  <span className="user-email">{session.user.email}</span>
+                  <button type="button" className="signout-btn" onClick={handleSignOut}>
+                    Выйти
+                  </button>
+                </div>
+              </div>
               <p className="subtitle">Выберите процедуру, дату и удобное время.</p>
             </header>
 

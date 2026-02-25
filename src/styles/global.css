@@ -714,3 +714,517 @@ input[type="date"]:hover {
   padding: 3px 0;
   font-style: italic;
 }
+
+/* --- Авторизация --- */
+.auth-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border: 1.5px solid var(--rose-soft);
+  border-radius: var(--radius-pill);
+  font-size: 15px;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--ink);
+  background: #fff;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.auth-input:focus {
+  border-color: var(--rose-deep);
+}
+
+.auth-sent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.auth-sent-icon {
+  font-size: 48px;
+  line-height: 1;
+}
+
+.auth-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: var(--ink-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.auth-resend {
+  font-size: 13px;
+  color: var(--rose-deep);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: 'DM Sans', sans-serif;
+  padding: 4px 0;
+}
+
+/* --- Шапка с email пользователя --- */
+.header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.user-email {
+  font-size: 11px;
+  color: var(--ink-muted);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signout-btn {
+  font-size: 11px;
+  color: var(--rose-deep);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.signout-btn:hover {
+  opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════
+   ЛЕНДИНГ
+   ═══════════════════════════════════════════════ */
+
+.land-root {
+  font-family: 'DM Sans', sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+
+/* — Hero — */
+.land-hero {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(160deg, #fff5f8 0%, #fff 60%);
+  padding: 80px 24px 60px;
+}
+
+.land-hero-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.land-hero-circle {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.18;
+}
+
+.land-hero-circle--1 {
+  width: 480px;
+  height: 480px;
+  background: radial-gradient(circle, var(--rose-deep) 0%, transparent 70%);
+  top: -120px;
+  right: -80px;
+}
+
+.land-hero-circle--2 {
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, #e8a0b8 0%, transparent 70%);
+  bottom: -60px;
+  left: -60px;
+}
+
+.land-hero-content {
+  position: relative;
+  max-width: 420px;
+  text-align: center;
+  z-index: 1;
+}
+
+.land-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--rose-deep);
+  margin: 0 0 16px;
+}
+
+.land-h1 {
+  font-size: clamp(36px, 9vw, 52px);
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0 0 20px;
+  color: var(--ink);
+}
+
+.land-h1-accent {
+  color: var(--rose-deep);
+  font-style: italic;
+}
+
+.land-hero-sub {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+  margin: 0 0 32px;
+}
+
+.land-btn-primary {
+  display: inline-block;
+  padding: 14px 32px;
+  background: linear-gradient(135deg, var(--rose-deep) 0%, #c4607a 100%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  border: none;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: transform 0.18s, box-shadow 0.18s;
+  box-shadow: 0 4px 20px rgba(176, 84, 110, 0.35);
+}
+
+.land-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(176, 84, 110, 0.45);
+}
+
+.land-btn-primary--light {
+  background: #fff;
+  color: var(--rose-deep);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+
+.land-btn-primary--light:hover {
+  box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+}
+
+.land-hero-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+/* — Общие секции — */
+.land-section {
+  padding: 64px 24px;
+}
+
+.land-section--alt {
+  background: #fdf6f8;
+}
+
+.land-section-inner {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.land-section-tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--rose-deep);
+  margin: 0 0 10px;
+}
+
+.land-h2 {
+  font-size: clamp(24px, 6vw, 32px);
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 36px;
+  color: var(--ink);
+}
+
+/* — Why grid — */
+.land-why-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.land-why-card {
+  background: #fff;
+  border: 1.5px solid var(--rose-soft);
+  border-radius: 16px;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.land-why-icon {
+  font-size: 22px;
+  color: var(--rose-deep);
+  line-height: 1;
+}
+
+.land-why-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.land-why-text {
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* — Steps — */
+.land-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.land-step {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.land-step-n {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--rose-deep);
+  opacity: 0.5;
+  min-width: 28px;
+  padding-top: 2px;
+}
+
+.land-step-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.land-step-text {
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* — Prep — */
+.land-prep-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.land-prep-col {
+  background: #fff;
+  border: 1.5px solid var(--rose-soft);
+  border-radius: 16px;
+  padding: 18px 14px;
+}
+
+.land-prep-label {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  letter-spacing: 0.5px;
+}
+
+.land-prep-label--do   { color: #2e7d32; }
+.land-prep-label--dont { color: var(--rose-deep); }
+
+.land-prep-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.land-prep-list li {
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+  padding-left: 12px;
+  position: relative;
+}
+
+.land-prep-list li::before {
+  content: "·";
+  position: absolute;
+  left: 0;
+  color: #2e7d32;
+}
+
+.land-prep-list--dont li::before {
+  color: var(--rose-deep);
+}
+
+/* — Masters — */
+.land-masters-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.land-master-card {
+  background: #fff;
+  border: 1.5px solid var(--rose-soft);
+  border-radius: 16px;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.land-master-avatar-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--rose-bg);
+  margin-bottom: 4px;
+}
+
+.land-master-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.land-master-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.land-master-spec {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.land-master-rating {
+  font-size: 13px;
+  color: #e8956d;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.land-master-rating span {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+/* — Reviews — */
+.land-reviews-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.land-review-card {
+  background: #fff;
+  border: 1.5px solid var(--rose-soft);
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.land-review-stars {
+  font-size: 14px;
+  color: #e8956d;
+  margin: 0 0 8px;
+}
+
+.land-review-text {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.6;
+  margin: 0 0 10px;
+  font-style: italic;
+}
+
+.land-review-name {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-weight: 600;
+  margin: 0;
+}
+
+/* — CTA — */
+.land-cta {
+  background: linear-gradient(135deg, var(--rose-deep) 0%, #c4607a 100%);
+  padding: 64px 24px;
+  text-align: center;
+}
+
+.land-cta-inner {
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.land-cta-title {
+  font-size: clamp(22px, 6vw, 30px);
+  font-weight: 800;
+  color: #fff;
+  margin: 0;
+}
+
+.land-cta-sub {
+  font-size: 14px;
+  color: rgba(255,255,255,0.8);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* — Кнопка назад — */
+.back-btn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  padding: 0 0 12px;
+  display: block;
+}
+.back-btn:hover { color: var(--rose-deep); }
