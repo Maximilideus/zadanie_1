@@ -10,22 +10,22 @@ const BASE_SLOTS = [
   "10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00",
 ];
 
-// Услуги с ценой и длительностью
+// Услуги с ценой и доступными длительностями
 export const SERVICES = {
-  laser_depilation:    { label: "Лазерная депиляция",    price: 2500, durations: [30, 60, 90] },
+  laser_depilation:    { label: "Лазерная депиляция",     price: 2500, durations: [30, 60, 90] },
   electric_depilation: { label: "Электрическая депиляция", price: 1800, durations: [30, 60] },
-  wax_depilation:      { label: "Восковая депиляция",     price: 1200, durations: [30, 60] },
-  neck_massage:        { label: "Массаж шеи",             price: 1500, durations: [30, 60] },
-  back_massage:        { label: "Массаж спины",           price: 2000, durations: [60, 90] },
-  full_body_massage:   { label: "Массаж всего тела",      price: 3500, durations: [60, 90] },
+  wax_depilation:      { label: "Восковая депиляция",      price: 1200, durations: [30, 60] },
+  neck_massage:        { label: "Массаж шеи",              price: 1500, durations: [30, 60] },
+  back_massage:        { label: "Массаж спины",            price: 2000, durations: [60, 90] },
+  full_body_massage:   { label: "Массаж всего тела",       price: 3500, durations: [60, 90] },
 };
 
-// Мастера с фото (аватары через UI Avatars) и рейтингом
+// Базовые данные мастеров — рейтинг здесь это «дефолт», если пользователь ещё не оставил оценок
 export const MASTERS_DATA = {
-  "Анна":    { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Anna",    rating: 4.9, specialization: "Депиляция" },
-  "Мария":   { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Maria",   rating: 4.7, specialization: "Депиляция" },
-  "Елена":   { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Elena",   rating: 4.8, specialization: "Массаж и депиляция" },
-  "Дмитрий": { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Dmitry",  rating: 4.6, specialization: "Массаж" },
+  "Анна":    { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Anna",   rating: 4.9, specialization: "Депиляция" },
+  "Мария":   { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Maria",  rating: 4.7, specialization: "Депиляция" },
+  "Елена":   { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Elena",  rating: 4.8, specialization: "Массаж и депиляция" },
+  "Дмитрий": { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Dmitry", rating: 4.6, specialization: "Массаж" },
 };
 
 export const MASTERS_BY_SERVICE = {
@@ -37,22 +37,19 @@ export const MASTERS_BY_SERVICE = {
   full_body_massage:   ["Елена", "Дмитрий"],
 };
 
-// Статусы записей
-export const BOOKING_STATUS = {
-  pending:   { label: "Ожидает",      className: "status-pending" },
-  confirmed: { label: "Подтверждена", className: "status-confirmed" },
-  completed: { label: "Завершена",    className: "status-completed" },
-  cancelled: { label: "Отменена",     className: "status-cancelled" },
-};
-
-const SINGLE_BOOKING_KEY = "booking";
+const SINGLE_BOOKING_KEY  = "booking";
 const HISTORY_STORAGE_KEY = "bookingHistory";
+// Оценки хранятся отдельно: { "Анна": [5, 4, 5], "Мария": [3, 5] }
+const RATINGS_STORAGE_KEY = "masterRatings";
+
+// Через сколько часов после записи появляется кнопка «Оценить»
+const HOURS_UNTIL_RATE = 24;
 
 function getTodayStr() {
   const today = new Date();
   const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
+  const mm   = String(today.getMonth() + 1).padStart(2, "0");
+  const dd   = String(today.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -65,6 +62,15 @@ export function formatDateForSummary(dateStr) {
 export function getServiceLabel(value) {
   if (!value) return "не выбрано";
   return SERVICES[value]?.label ?? "не выбрано";
+}
+
+// Проверяем, прошло ли достаточно времени с момента создания записи
+function canRateBooking(booking) {
+  if (!booking.createdAt) return true; // старые записи без метки — разрешаем
+  const created = new Date(booking.createdAt);
+  const now     = new Date();
+  const diffHours = (now - created) / (1000 * 60 * 60);
+  return diffHours >= HOURS_UNTIL_RATE;
 }
 
 function timeToMinutes(time) {
@@ -81,21 +87,20 @@ function buildSlotsForDate(dateStr, todayStr, masterValue, history) {
   const now = new Date();
   now.setSeconds(0, 0);
 
+  // Бронирования этого мастера на эту дату (не отменённые)
   const masterBookings = masterValue
     ? history.filter(
-        (item) =>
-          item.status !== "cancelled" &&
-          item.master === masterValue &&
-          item.date === dateStr
+        (item) => !item.cancelled && item.master === masterValue && item.date === dateStr
       )
     : [];
 
   return BASE_SLOTS.map((time) => {
     const slotStart = timeToMinutes(time);
 
+    // Слот занят, если попадает внутрь любой существующей записи с учётом длительности
     const isBooked = masterBookings.some((item) => {
       const itemStart = timeToMinutes(item.time);
-      const itemEnd = itemStart + (item.duration ?? 60);
+      const itemEnd   = itemStart + (item.duration ?? 60);
       return slotStart >= itemStart && slotStart < itemEnd;
     });
 
@@ -111,8 +116,20 @@ function buildSlotsForDate(dateStr, todayStr, masterValue, history) {
   });
 }
 
+// Считаем средний рейтинг мастера из сохранённых оценок.
+// Если оценок нет — возвращаем дефолтный рейтинг из MASTERS_DATA.
+export function calcRating(masterName, ratingsMap) {
+  const scores = ratingsMap[masterName];
+  if (!scores || scores.length === 0) {
+    return MASTERS_DATA[masterName]?.rating ?? null;
+  }
+  const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  return Math.round(avg * 10) / 10; // округляем до 1 знака
+}
+
 export function App() {
   const todayStr = useMemo(() => getTodayStr(), []);
+
   const [formData, setFormData] = useState({
     service: "",
     master: "",
@@ -120,66 +137,66 @@ export function App() {
     selectedSlot: null,
     duration: null,
   });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [history, setHistory] = useState([]);
+  const [history,      setHistory]      = useState([]);
+
+  // ratingsMap: { "Анна": [5, 4], "Мария": [3] }
+  const [ratingsMap, setRatingsMap] = useState({});
+
   const serviceSelectRef = useRef(null);
 
-  const availableMasters = useMemo(
-    () => MASTERS_BY_SERVICE[formData.service] ?? [],
-    [formData.service]
-  );
-
-  const availableDurations = useMemo(
-    () => SERVICES[formData.service]?.durations ?? [],
-    [formData.service]
-  );
-
-  const servicePrice = useMemo(
-    () => SERVICES[formData.service]?.price ?? null,
-    [formData.service]
-  );
+  const availableMasters   = useMemo(() => MASTERS_BY_SERVICE[formData.service] ?? [], [formData.service]);
+  const availableDurations = useMemo(() => SERVICES[formData.service]?.durations ?? [], [formData.service]);
+  const servicePrice       = useMemo(() => SERVICES[formData.service]?.price ?? null, [formData.service]);
 
   const slots = useMemo(
     () => buildSlotsForDate(formData.date, todayStr, formData.master, history),
     [formData.date, todayStr, formData.master, history]
   );
 
-  const summaryService = getServiceLabel(formData.service);
-  const summaryMaster = formData.master || "не выбрано";
-  const summaryDate = formatDateForSummary(formData.date);
-  const summaryTime = formData.selectedSlot || "не выбрано";
+  const summaryService  = getServiceLabel(formData.service);
+  const summaryMaster   = formData.master || "не выбрано";
+  const summaryDate     = formatDateForSummary(formData.date);
+  const summaryTime     = formData.selectedSlot || "не выбрано";
   const summaryDuration = formData.duration ? `${formData.duration} мин` : "не выбрано";
-  const summaryPrice = servicePrice
-    ? `${servicePrice.toLocaleString("ru-RU")} ₽`
-    : "не выбрано";
+  const summaryPrice    = servicePrice ? `${servicePrice.toLocaleString("ru-RU")} ₽` : "не выбрано";
 
+  // Загружаем историю и оценки из localStorage при старте
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(HISTORY_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
+      const storedHistory = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+      if (storedHistory) {
+        const parsed = JSON.parse(storedHistory);
         if (Array.isArray(parsed)) {
-          // Гарантируем, что у каждой записи есть уникальный id
+          // Гарантируем уникальный id у каждой записи (для старых данных без id)
           const normalized = parsed.map((item, i) =>
             item.id ? item : { ...item, id: `legacy-${i}-${item.date}-${item.time}` }
           );
           setHistory(normalized);
         }
       }
-    } catch (storageError) {
-      console.error("Не удалось прочитать историю:", storageError);
+
+      const storedRatings = window.localStorage.getItem(RATINGS_STORAGE_KEY);
+      if (storedRatings) {
+        const parsed = JSON.parse(storedRatings);
+        if (parsed && typeof parsed === "object") setRatingsMap(parsed);
+      }
+    } catch (e) {
+      console.error("Не удалось прочитать данные из localStorage:", e);
     }
   }, []);
 
+  // Сохраняем запись
   const handleConfirm = (event) => {
     if (isSubmitting) return;
     event.preventDefault();
 
     const problems = [];
-    if (!formData.service) problems.push("Выберите услугу.");
-    if (!formData.master) problems.push("Выберите мастера.");
-    if (!formData.duration) problems.push("Выберите длительность.");
-    if (!formData.date || !formData.selectedSlot) problems.push("Выберите дату и время.");
+    if (!formData.service)                         problems.push("Выберите услугу.");
+    if (!formData.master)                          problems.push("Выберите мастера.");
+    if (!formData.duration)                        problems.push("Выберите длительность.");
+    if (!formData.date || !formData.selectedSlot)  problems.push("Выберите дату и время.");
 
     if (problems.length > 0) {
       showErrorToast(problems.join(" "));
@@ -187,23 +204,25 @@ export function App() {
     }
 
     const newBooking = {
-      id: Date.now().toString(),
-      service: summaryService,
-      master: formData.master,
-      date: formData.date,
-      time: formData.selectedSlot,
-      duration: formData.duration,
-      price: servicePrice,
-      status: "pending",
+      id:        Date.now().toString(),
+      createdAt: new Date().toISOString(), // нужно для логики «Оценить»
+      service:   summaryService,
+      master:    formData.master,
+      date:      formData.date,
+      time:      formData.selectedSlot,
+      duration:  formData.duration,
+      price:     servicePrice,
+      cancelled: false,
+      rated:     false, // станет true после того как пользователь поставил оценку
     };
 
     const isDuplicate = history.some(
       (item) =>
-        item.status !== "cancelled" &&
+        !item.cancelled &&
         item.service === newBooking.service &&
-        item.master === newBooking.master &&
-        item.date === newBooking.date &&
-        item.time === newBooking.time
+        item.master  === newBooking.master  &&
+        item.date    === newBooking.date    &&
+        item.time    === newBooking.time
     );
 
     if (isDuplicate) {
@@ -217,15 +236,13 @@ export function App() {
     const updatedHistory = [newBooking, ...history].slice(0, 5);
 
     try {
-      window.localStorage.setItem(SINGLE_BOOKING_KEY, JSON.stringify(newBooking));
+      window.localStorage.setItem(SINGLE_BOOKING_KEY,  JSON.stringify(newBooking));
       window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
-    } catch (storageError) {
-      console.error("Не удалось сохранить запись:", storageError);
+    } catch (e) {
+      console.error("Не удалось сохранить запись:", e);
     }
 
-    showSuccessToast(
-      `Запись создана: ${summaryService}, ${formData.master}, ${summaryDate}, ${formData.selectedSlot}.`
-    );
+    showSuccessToast(`Запись создана: ${summaryService}, ${formData.master}, ${summaryDate}, ${formData.selectedSlot}.`);
     setHistory(updatedHistory);
     setFormData({ service: "", master: "", date: todayStr, selectedSlot: null, duration: null });
 
@@ -233,38 +250,52 @@ export function App() {
     window.setTimeout(() => setIsSubmitting(false), 1500);
   };
 
-  // Отмена записи из истории
+  // Отмена записи — помечаем как cancelled, освобождает слот
   const handleCancelBooking = (bookingId) => {
     const updatedHistory = history.map((item) =>
-      item.id === bookingId ? { ...item, status: "cancelled" } : item
+      item.id === bookingId ? { ...item, cancelled: true } : item
     );
+    saveHistory(updatedHistory);
+    showSuccessToast("Запись отменена.");
+  };
+
+  // Оценка мастера: сохраняем score, помечаем запись как rated
+  const handleRateMaster = (bookingId, masterName, score) => {
+    // Обновляем оценки мастера
+    const currentScores = ratingsMap[masterName] ?? [];
+    const updatedRatings = { ...ratingsMap, [masterName]: [...currentScores, score] };
+    setRatingsMap(updatedRatings);
+    try {
+      window.localStorage.setItem(RATINGS_STORAGE_KEY, JSON.stringify(updatedRatings));
+    } catch (e) {
+      console.error("Не удалось сохранить оценку:", e);
+    }
+
+    // Помечаем запись как «уже оценена», чтобы скрыть кнопку
+    const updatedHistory = history.map((item) =>
+      item.id === bookingId ? { ...item, rated: true } : item
+    );
+    saveHistory(updatedHistory);
+
+    showSuccessToast(`Спасибо за оценку! ${masterName} получает ваши ★`);
+  };
+
+  // Вспомогательная функция: обновить state + localStorage
+  const saveHistory = (updatedHistory) => {
     setHistory(updatedHistory);
     try {
       window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
     } catch (e) {
       console.error("Не удалось обновить историю:", e);
     }
-    showSuccessToast("Запись отменена.");
   };
 
-  const handleServiceChange = (value) => {
-    setFormData((prev) => ({ ...prev, service: value, master: "", duration: null }));
-  };
-  const handleMasterChange = (value) => {
-    setFormData((prev) => ({ ...prev, master: value }));
-  };
-  const handleDateChange = (value) => {
-    setFormData((prev) => ({ ...prev, date: value, selectedSlot: null }));
-  };
-  const handleSlotSelect = (time) => {
-    setFormData((prev) => ({ ...prev, selectedSlot: time }));
-  };
-  const handleDurationChange = (duration) => {
-    setFormData((prev) => ({ ...prev, duration }));
-  };
-  const handleBookedSlotClick = () => {
-    showErrorToast("Это время уже занято. Пожалуйста, выберите другой слот.");
-  };
+  const handleServiceChange  = (value) => setFormData((prev) => ({ ...prev, service: value, master: "", duration: null }));
+  const handleMasterChange   = (value) => setFormData((prev) => ({ ...prev, master: value }));
+  const handleDateChange     = (value) => setFormData((prev) => ({ ...prev, date: value, selectedSlot: null }));
+  const handleSlotSelect     = (time)  => setFormData((prev) => ({ ...prev, selectedSlot: time }));
+  const handleDurationChange = (dur)   => setFormData((prev) => ({ ...prev, duration: dur }));
+  const handleBookedSlotClick = ()     => showErrorToast("Это время уже занято. Пожалуйста, выберите другой слот.");
 
   return (
     <div className="root-bg">
@@ -282,6 +313,7 @@ export function App() {
               selectRef={serviceSelectRef}
             />
 
+            {/* Длительность появляется только после выбора услуги */}
             {formData.service && availableDurations.length > 0 && (
               <div className="duration-selector">
                 <div className="section-label">Длительность</div>
@@ -300,11 +332,14 @@ export function App() {
               </div>
             )}
 
+            {/* Передаём актуальные рейтинги в карточки мастеров */}
             <MasterSelector
               value={formData.master}
               masters={availableMasters}
               onChange={handleMasterChange}
+              ratingsMap={ratingsMap}
             />
+
             <DateSelector value={formData.date} min={todayStr} onChange={handleDateChange} />
             <TimeSlots
               slots={slots}
@@ -332,31 +367,35 @@ export function App() {
               </button>
             </div>
 
+            {/* История записей */}
             {history.length > 0 && (
               <section className="history" aria-label="История последних записей">
                 <h2 className="history-title">Последние записи</h2>
                 <ul className="history-list">
                   {history.map((entry, index) => {
-                    const statusInfo = BOOKING_STATUS[entry.status] ?? BOOKING_STATUS.pending;
-                    const canCancel = entry.status !== "cancelled" && entry.status !== "completed";
+                    const canCancel = !entry.cancelled;
+                    // Кнопка «Оценить» — если не отменена, не оценена, и прошло 24 ч
+                    const canRate   = !entry.cancelled && !entry.rated && canRateBooking(entry);
+
                     return (
                       <li
                         key={entry.id ?? `${entry.date}-${entry.time}-${index}`}
-                        className={`history-item${entry.status === "cancelled" ? " cancelled" : ""}`}
+                        className={`history-item${entry.cancelled ? " cancelled" : ""}`}
                       >
+                        {/* Верхняя строка: услуга и мастер */}
                         <div className="history-item-top">
                           <span className="history-item-service">
                             {entry.service}{entry.master ? ` — ${entry.master}` : ""}
                           </span>
-                          <span className={`status-badge ${statusInfo.className}`}>
-                            {statusInfo.label}
-                          </span>
                         </div>
+
+                        {/* Нижняя строка: дата/время и кнопка отмены */}
                         <div className="history-item-bottom">
                           <span className="history-item-meta">
                             {formatDateForSummary(entry.date)}, {entry.time}
                             {entry.duration ? ` · ${entry.duration} мин` : ""}
-                            {entry.price ? ` · ${entry.price.toLocaleString("ru-RU")} ₽` : ""}
+                            {entry.price    ? ` · ${entry.price.toLocaleString("ru-RU")} ₽` : ""}
+                            {entry.cancelled ? " · Отменена" : ""}
                           </span>
                           {canCancel && (
                             <button
@@ -369,6 +408,31 @@ export function App() {
                             </button>
                           )}
                         </div>
+
+                        {/* Блок оценки — появляется через 24 ч после записи */}
+                        {canRate && (
+                          <div className="rate-block">
+                            <span className="rate-label">Как прошёл визит к {entry.master}?</span>
+                            <div className="rate-stars">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  type="button"
+                                  className="rate-star-btn"
+                                  onClick={() => handleRateMaster(entry.id, entry.master, star)}
+                                  aria-label={`Оценить на ${star}`}
+                                >
+                                  ★
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Если уже оценена — показываем благодарность */}
+                        {entry.rated && !entry.cancelled && (
+                          <div className="rate-done">Спасибо за оценку ✓</div>
+                        )}
                       </li>
                     );
                   })}

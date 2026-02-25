@@ -637,23 +637,7 @@ input[type="date"]:hover {
   gap: 8px;
 }
 
-/* .history-item-service и .history-item-meta уже есть в global.css — не трогаем */
-
-.status-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  white-space: nowrap;
-  flex-shrink: 0;
-  letter-spacing: 0.3px;
-}
-
-.status-pending   { background: #fef3e2; color: #a0620a; }
-.status-confirmed { background: #e8f5e9; color: #2e7d32; }
-.status-completed { background: var(--rose-faint); color: var(--rose-deep); }
-.status-cancelled { background: #f5f0f0; color: var(--ink-faint); text-decoration: line-through; }
-
+/* Кнопка отмены записи */
 .cancel-btn {
   font-size: 11px;
   font-family: 'DM Sans', sans-serif;
@@ -671,4 +655,62 @@ input[type="date"]:hover {
 .cancel-btn:hover {
   background-color: #fde8ef;
   border-color: #e0aab8;
+}
+
+/* --- Блок оценки мастера --- */
+.rate-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 7px 10px;
+  background: var(--rose-faint);
+  border-radius: 10px;
+  border: 1px dashed var(--rose-soft);
+}
+
+.rate-label {
+  font-size: 12px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rate-stars {
+  display: flex;
+  gap: 2px;
+}
+
+/* Каждая звезда — кнопка */
+.rate-star-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  padding: 0 1px;
+  line-height: 1;
+  transition: color var(--transition), transform var(--transition);
+}
+
+.rate-star-btn:hover {
+  color: #e8956d;
+  transform: scale(1.2);
+}
+
+/* При ховере — подсвечиваем все предыдущие звёзды тоже */
+.rate-stars:hover .rate-star-btn {
+  color: #e8956d;
+}
+
+.rate-stars .rate-star-btn:hover ~ .rate-star-btn {
+  color: var(--ink-faint);
+}
+
+/* Текст «Спасибо» после оценки */
+.rate-done {
+  font-size: 11px;
+  color: var(--rose-deep);
+  padding: 3px 0;
+  font-style: italic;
 }
