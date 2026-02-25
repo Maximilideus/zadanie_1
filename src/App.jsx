@@ -68,13 +68,17 @@ export function getServiceLabel(value) {
 function canRateBooking(booking) {
   if (!booking.createdAt) return true; // старые записи без метки — разрешаем
   const created = new Date(booking.createdAt);
-  const now     = new Date();
-  const diffHours = (now - created) / (1000 * 60 * 60);
+  // Защита: битый createdAt даёт Invalid Date → isNaN → разрешаем оценку
+  if (isNaN(created.getTime())) return true;
+  const diffHours = (Date.now() - created.getTime()) / (1000 * 60 * 60);
   return diffHours >= HOURS_UNTIL_RATE;
 }
 
 function timeToMinutes(time) {
+  // Защита: если time пустой или не "HH:MM" — возвращаем -1 (не крешит, не блокирует слот)
+  if (!time || typeof time !== "string" || !time.includes(":")) return -1;
   const [h, m] = time.split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return -1;
   return h * 60 + m;
 }
 
@@ -120,10 +124,14 @@ function buildSlotsForDate(dateStr, todayStr, masterValue, history) {
 // Если оценок нет — возвращаем дефолтный рейтинг из MASTERS_DATA.
 export function calcRating(masterName, ratingsMap) {
   const scores = ratingsMap[masterName];
-  if (!scores || scores.length === 0) {
+  // Защита: scores должен быть непустым массивом чисел
+  if (!Array.isArray(scores) || scores.length === 0) {
     return MASTERS_DATA[masterName]?.rating ?? null;
   }
-  const avg = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  // Фильтруем мусор: оставляем только числа от 1 до 5
+  const valid = scores.filter((s) => typeof s === "number" && s >= 1 && s <= 5);
+  if (valid.length === 0) return MASTERS_DATA[masterName]?.rating ?? null;
+  const avg = valid.reduce((sum, s) => sum + s, 0) / valid.length;
   return Math.round(avg * 10) / 10; // округляем до 1 знака
 }
 
@@ -164,26 +172,40 @@ export function App() {
 
   // Загружаем историю и оценки из localStorage при старте
   useEffect(() => {
+    // История — отдельный try/catch, чтобы сбой рейтингов не убил историю и наоборот
     try {
       const storedHistory = window.localStorage.getItem(HISTORY_STORAGE_KEY);
       if (storedHistory) {
         const parsed = JSON.parse(storedHistory);
         if (Array.isArray(parsed)) {
-          // Гарантируем уникальный id у каждой записи (для старых данных без id)
-          const normalized = parsed.map((item, i) =>
-            item.id ? item : { ...item, id: `legacy-${i}-${item.date}-${item.time}` }
-          );
+          const normalized = parsed
+            // Защита: фильтруем записи без обязательных полей (битые данные)
+            .filter((item) => item && typeof item === "object" && item.service && item.date && item.time)
+            // Гарантируем уникальный id у каждой записи
+            .map((item, i) =>
+              item.id ? item : { ...item, id: `legacy-${i}-${item.date}-${item.time}` }
+            );
           setHistory(normalized);
         }
       }
+    } catch (e) {
+      // Повреждённый JSON — показываем пустую историю, не крешим
+      console.error("История повреждена, сбрасываем:", e);
+      setHistory([]);
+    }
 
+    try {
       const storedRatings = window.localStorage.getItem(RATINGS_STORAGE_KEY);
       if (storedRatings) {
         const parsed = JSON.parse(storedRatings);
-        if (parsed && typeof parsed === "object") setRatingsMap(parsed);
+        // Защита: должен быть объект, не массив и не null
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          setRatingsMap(parsed);
+        }
       }
     } catch (e) {
-      console.error("Не удалось прочитать данные из localStorage:", e);
+      console.error("Оценки повреждены, сбрасываем:", e);
+      setRatingsMap({});
     }
   }, []);
 
@@ -286,13 +308,25 @@ export function App() {
     try {
       window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
     } catch (e) {
-      console.error("Не удалось обновить историю:", e);
+      // QuotaExceededError — хранилище переполнено
+      if (e.name === "QuotaExceededError") {
+        showErrorToast("Не удалось сохранить: хранилище браузера переполнено.");
+      } else {
+        console.error("Не удалось обновить историю:", e);
+      }
     }
   };
 
   const handleServiceChange  = (value) => setFormData((prev) => ({ ...prev, service: value, master: "", duration: null }));
   const handleMasterChange   = (value) => setFormData((prev) => ({ ...prev, master: value }));
-  const handleDateChange     = (value) => setFormData((prev) => ({ ...prev, date: value, selectedSlot: null }));
+  const handleDateChange     = (value) => {
+    // Защита: не принимаем дату в прошлом (пользователь мог вписать вручную)
+    if (value < todayStr) {
+      showErrorToast("Нельзя записаться на прошедшую дату.");
+      return;
+    }
+    setFormData((prev) => ({ ...prev, date: value, selectedSlot: null }));
+  };
   const handleSlotSelect     = (time)  => setFormData((prev) => ({ ...prev, selectedSlot: time }));
   const handleDurationChange = (dur)   => setFormData((prev) => ({ ...prev, duration: dur }));
   const handleBookedSlotClick = ()     => showErrorToast("Это время уже занято. Пожалуйста, выберите другой слот.");
@@ -373,7 +407,7 @@ export function App() {
                 <h2 className="history-title">Последние записи</h2>
                 <ul className="history-list">
                   {history.map((entry, index) => {
-                    const canCancel = !entry.cancelled;
+                    const canCancel = !entry.cancelled && !entry.rated;
                     // Кнопка «Оценить» — если не отменена, не оценена, и прошло 24 ч
                     const canRate   = !entry.cancelled && !entry.rated && canRateBooking(entry);
 
