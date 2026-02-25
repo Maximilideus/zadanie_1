@@ -1,11 +1,22 @@
 import PropTypes from "prop-types";
+import { SERVICES } from "../App.jsx";
 
 export function ServiceSelector({ value, onChange, selectRef }) {
+  const depilation = ["laser_depilation", "electric_depilation", "wax_depilation"];
+  const massage = ["neck_massage", "back_massage", "full_body_massage"];
+
+  const renderOption = (key) => {
+    const svc = SERVICES[key];
+    return (
+      <option key={key} value={key}>
+        {svc.label} — {svc.price.toLocaleString("ru-RU")} ₽
+      </option>
+    );
+  };
+
   return (
     <div>
-      <label htmlFor="serviceSelect" className="section-label">
-        Услуга
-      </label>
+      <label htmlFor="serviceSelect" className="section-label">Услуга</label>
       <select
         id="serviceSelect"
         ref={selectRef}
@@ -14,14 +25,10 @@ export function ServiceSelector({ value, onChange, selectRef }) {
       >
         <option value="">Выберите услугу...</option>
         <optgroup label="Депиляция">
-          <option value="laser_depilation">Лазерная депиляция</option>
-          <option value="electric_depilation">Электрическая депиляция</option>
-          <option value="wax_depilation">Восковая депиляция</option>
+          {depilation.map(renderOption)}
         </optgroup>
         <optgroup label="Массаж">
-          <option value="neck_massage">Массаж шеи</option>
-          <option value="back_massage">Массаж спины</option>
-          <option value="full_body_massage">Массаж всего тела</option>
+          {massage.map(renderOption)}
         </optgroup>
       </select>
     </div>
@@ -36,4 +43,3 @@ ServiceSelector.propTypes = {
     PropTypes.shape({ current: PropTypes.any }),
   ]),
 };
-

@@ -405,3 +405,270 @@ input[type="date"]:hover {
     font-size: 24px;
   }
 }
+/* =============================================
+   НОВЫЕ СТИЛИ: карточки мастеров, длительность,
+   статус записи, отмена, цена в Summary
+   ============================================= */
+
+/* --- Выбор длительности ---
+   Точная копия стиля .slot-btn
+   ============================================= */
+.duration-selector {
+  margin-top: 4px;
+}
+
+.duration-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.duration-btn {
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--rose-soft);
+  padding: 8px 18px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  background-color: var(--rose-bg);
+  cursor: pointer;
+  letter-spacing: 0.2px;
+  transition:
+    background-color var(--transition),
+    color var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+
+.duration-btn:hover {
+  background-color: #fde8ef;
+  border-color: #e0aab8;
+  color: var(--rose-deep);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(176, 84, 110, 0.12);
+}
+
+.duration-btn.selected {
+  background: linear-gradient(135deg, var(--rose-deep), var(--rose-mid));
+  color: var(--white);
+  border-color: transparent;
+  box-shadow: 0 6px 18px rgba(176, 84, 110, 0.35);
+  transform: translateY(-1px);
+  font-weight: 600;
+}
+
+/* --- Карточки мастеров --- */
+.master-selector {
+  margin-top: 4px;
+}
+
+.master-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.master-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1.5px solid var(--rose-soft);
+  border-radius: var(--radius-input);
+  background-color: var(--rose-bg);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition:
+    background-color var(--transition),
+    border-color var(--transition),
+    box-shadow var(--transition),
+    transform var(--transition);
+}
+
+.master-card:hover {
+  background-color: #fde8ef;
+  border-color: #e0aab8;
+  color: var(--rose-deep);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(176, 84, 110, 0.12);
+}
+
+.master-card.selected {
+  background: linear-gradient(135deg, var(--rose-deep), var(--rose-mid));
+  border-color: transparent;
+  box-shadow: 0 6px 18px rgba(176, 84, 110, 0.35);
+  transform: translateY(-1px);
+}
+
+.master-avatar-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--rose-soft);
+}
+
+.master-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.master-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--rose-deep);
+  background: var(--rose-soft);
+}
+
+.master-card.selected .master-avatar-fallback {
+  color: var(--rose-deep);
+  background: var(--rose-soft);
+}
+
+.master-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.master-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.master-card.selected .master-name {
+  color: var(--white);
+}
+
+.master-spec {
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.master-card.selected .master-spec {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.master-rating {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-top: 2px;
+}
+
+.star {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.star.full  { color: #e8956d; }
+.star.half  { color: #e8956d; opacity: 0.55; }
+.star.empty { color: var(--ink-faint); }
+
+.master-card.selected .star.full,
+.master-card.selected .star.half { color: #ffd8c0; }
+.master-card.selected .star.empty { color: rgba(255,255,255,0.35); }
+
+.rating-number {
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-left: 3px;
+  font-weight: 600;
+}
+
+.master-card.selected .rating-number {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.master-check {
+  font-size: 15px;
+  color: var(--white);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* --- Summary: цена и длительность --- */
+.summary-price {
+  font-weight: 700;
+  color: var(--rose-deep) !important;
+}
+
+/* --- История: переопределяем глобальный .history-item --- */
+.history-item {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  gap: 5px !important;
+  padding: 9px 12px !important;
+}
+
+.history-item.cancelled {
+  opacity: 0.5;
+}
+
+.history-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-item-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* .history-item-service и .history-item-meta уже есть в global.css — не трогаем */
+
+.status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+}
+
+.status-pending   { background: #fef3e2; color: #a0620a; }
+.status-confirmed { background: #e8f5e9; color: #2e7d32; }
+.status-completed { background: var(--rose-faint); color: var(--rose-deep); }
+.status-cancelled { background: #f5f0f0; color: var(--ink-faint); text-decoration: line-through; }
+
+.cancel-btn {
+  font-size: 11px;
+  font-family: 'DM Sans', sans-serif;
+  padding: 3px 10px;
+  border: 1.5px solid var(--rose-soft);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--rose-deep);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+
+.cancel-btn:hover {
+  background-color: #fde8ef;
+  border-color: #e0aab8;
+}

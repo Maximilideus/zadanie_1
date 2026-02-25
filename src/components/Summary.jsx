@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 
-export function Summary({ serviceLabel, masterLabel, dateLabel, timeLabel }) {
+export function Summary({ serviceLabel, masterLabel, dateLabel, timeLabel, durationLabel, priceLabel }) {
   return (
     <div className="summary" aria-live="polite">
       <div className="summary-row">
@@ -19,6 +19,14 @@ export function Summary({ serviceLabel, masterLabel, dateLabel, timeLabel }) {
         <span>Время:</span>
         <span>{timeLabel}</span>
       </div>
+      <div className="summary-row">
+        <span>Длительность:</span>
+        <span>{durationLabel}</span>
+      </div>
+      <div className="summary-row summary-row--price">
+        <span>Стоимость:</span>
+        <span className="summary-price">{priceLabel}</span>
+      </div>
     </div>
   );
 }
@@ -28,4 +36,6 @@ Summary.propTypes = {
   masterLabel: PropTypes.string.isRequired,
   dateLabel: PropTypes.string.isRequired,
   timeLabel: PropTypes.string.isRequired,
+  durationLabel: PropTypes.string.isRequired,
+  priceLabel: PropTypes.string.isRequired,
 };
