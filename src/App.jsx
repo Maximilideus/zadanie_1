@@ -6,6 +6,7 @@ import { TimeSlots } from "./components/TimeSlots.jsx";
 import { Summary } from "./components/Summary.jsx";
 import { AuthForm } from "./components/AuthForm.jsx";
 import { LandingPage } from "./components/LandingPage.jsx";
+import { AdminPanel } from "./components/AdminPanel.jsx";
 import { showSuccessToast, showErrorToast } from "./components/CustomToast.jsx";
 import { supabase } from "./supabase.js";
 
@@ -39,6 +40,9 @@ export const MASTERS_BY_SERVICE = {
 };
 
 const HOURS_UNTIL_RATE = 24;
+
+// ─── Админ: замени на свой email ─────────────────────────────────────────
+const ADMIN_EMAIL = "hks14865@gmail.com";
 
 function getTodayStr() {
   const today = new Date();
@@ -127,6 +131,7 @@ export function App() {
   // undefined = ещё проверяем сессию, null = не авторизован, object = авторизован
   const [session,     setSession]     = useState(undefined);
   const [showBooking, setShowBooking] = useState(false); // false = лендинг, true = форма записи
+  const [showAdmin,   setShowAdmin]   = useState(false); // true = админ-панель
   const [formData,    setFormData]    = useState({
     service: "", master: "", date: todayStr, selectedSlot: null, duration: null,
   });
@@ -317,6 +322,13 @@ export function App() {
   // ─── Пока проверяем сессию — пустой экран ────────────────────────────────
   if (session === undefined) return null;
 
+  const isAdmin = session?.user?.email === ADMIN_EMAIL;
+
+  // ─── Админ-панель ──────────────────────────────────────────────────────
+  if (showAdmin && isAdmin) {
+    return <AdminPanel session={session} onBack={() => setShowAdmin(false)} onSignOut={handleSignOut} />;
+  }
+
   // ─── Лендинг — стартовый экран ────────────────────────────────────────────
   if (!showBooking) {
     return <LandingPage onBook={() => setShowBooking(true)} />;
@@ -339,6 +351,12 @@ export function App() {
                 {/* Email пользователя + кнопка выхода */}
                 <div className="user-info">
                   <span className="user-email">{session.user.email}</span>
+                  {isAdmin && (
+                    <div className="mode-switcher">
+                      <button type="button" className="mode-btn mode-btn-active">Клиент</button>
+                      <button type="button" className="mode-btn" onClick={() => setShowAdmin(true)}>Админ</button>
+                    </div>
+                  )}
                   <button type="button" className="signout-btn" onClick={handleSignOut}>
                     Выйти
                   </button>

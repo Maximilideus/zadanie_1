@@ -1244,3 +1244,296 @@ input[type="date"]:hover {
   color: var(--ink-muted);
   margin-top: 12px;
 }
+
+/* ============================================================
+   Админ-панель — стили
+   Добавь этот файл через import в AdminPanel.jsx
+   ИЛИ скопируй содержимое в конец global.css
+   ============================================================ */
+
+/* ─── Общий контейнер ──────────────────────────────────────── */
+.admin-page {
+  max-width: 1200px;
+}
+
+.admin-card {
+  padding: 24px 28px 32px;
+}
+
+/* ─── Шапка ────────────────────────────────────────────────── */
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.admin-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary, #3d2c22);
+  margin: 0;
+}
+
+/* ─── Переключатель Клиент / Админ ─────────────────────────── */
+.mode-switcher {
+  display: flex;
+  background: var(--bg-hover, #f5ede8);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.mode-btn {
+  background: none;
+  border: none;
+  padding: 5px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #7a6b63);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  color: var(--text-primary, #3d2c22);
+}
+
+.mode-btn-active {
+  background: #fff;
+  color: var(--text-primary, #3d2c22);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  cursor: default;
+}
+
+/* ─── Статистика ───────────────────────────────────────────── */
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #e0d6d0);
+  background: var(--bg-card, #fffcfa);
+}
+
+.stat-revenue {
+  border-color: #c8a88e;
+  background: linear-gradient(135deg, #fdf6f0, #f8ece0);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary, #3d2c22);
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--text-secondary, #7a6b63);
+  margin-top: 4px;
+  text-align: center;
+}
+
+/* ─── Фильтры ──────────────────────────────────────────────── */
+.admin-filters {
+  margin-bottom: 20px;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 140px;
+}
+
+.filter-group-email {
+  flex: 1;
+  min-width: 180px;
+}
+
+.filter-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #7a6b63);
+  letter-spacing: 0.3px;
+}
+
+.filter-select,
+.filter-input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e0d6d0);
+  background: #fff;
+  font-size: 14px;
+  color: var(--text-primary, #3d2c22);
+  transition: border-color 0.2s;
+}
+
+.filter-select:focus,
+.filter-input:focus {
+  outline: none;
+  border-color: var(--accent, #c8a88e);
+  box-shadow: 0 0 0 3px rgba(200, 168, 142, 0.15);
+}
+
+.filter-clear-btn {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  color: var(--accent, #c8a88e);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.filter-clear-btn:hover {
+  color: var(--text-primary, #3d2c22);
+}
+
+/* ─── Таблица ──────────────────────────────────────────────── */
+.admin-table-info {
+  font-size: 13px;
+  color: var(--text-secondary, #7a6b63);
+  margin-bottom: 8px;
+}
+
+.admin-table-wrapper {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border, #e0d6d0);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.admin-table thead {
+  background: var(--bg-hover, #faf5f2);
+}
+
+.admin-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary, #7a6b63);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border, #e0d6d0);
+}
+
+.admin-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-light, #f0e8e2);
+  color: var(--text-primary, #3d2c22);
+}
+
+.admin-table tbody tr:hover {
+  background: rgba(200, 168, 142, 0.06);
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.row-cancelled {
+  opacity: 0.55;
+}
+
+.cell-price {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cell-email {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-created {
+  font-size: 12px;
+  color: var(--text-secondary, #7a6b63);
+}
+
+/* ─── Статус-бейджи ────────────────────────────────────────── */
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.status-active {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.status-cancelled {
+  background: #fce4ec;
+  color: #c62828;
+}
+
+/* ─── Пустые состояния ─────────────────────────────────────── */
+.admin-loading,
+.admin-empty {
+  text-align: center;
+  color: var(--text-secondary, #7a6b63);
+  padding: 40px 20px;
+  font-size: 15px;
+}
+
+/* ─── Мобильная адаптация ──────────────────────────────────── */
+@media (max-width: 768px) {
+  .admin-card {
+    padding: 16px 14px 24px;
+  }
+
+  .admin-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .filter-row {
+    flex-direction: column;
+  }
+
+  .filter-group {
+    min-width: 100%;
+  }
+
+  .admin-table {
+    font-size: 13px;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 8px 10px;
+  }
+}
