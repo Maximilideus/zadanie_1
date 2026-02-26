@@ -45,7 +45,13 @@ export function AdminPanel({ onBack, session, onSignOut }) {
       if (filterDateTo && b.date > filterDateTo) return false;
       if (filterStatus === "active" && b.cancelled) return false;
       if (filterStatus === "cancelled" && !b.cancelled) return false;
-      if (searchEmail && !b.client_email?.toLowerCase().includes(searchEmail.toLowerCase())) return false;
+      if (searchEmail) {
+        const q = searchEmail.toLowerCase();
+        const matchEmail = b.client_email?.toLowerCase().includes(q);
+        const matchTg = b.telegram_username?.toLowerCase().includes(q);
+        const matchName = b.client_name?.toLowerCase().includes(q);
+        if (!matchEmail && !matchTg && !matchName) return false;
+      }
       return true;
     });
   }, [bookings, filterMaster, filterDateFrom, filterDateTo, filterStatus, searchEmail]);
@@ -178,11 +184,11 @@ export function AdminPanel({ onBack, session, onSignOut }) {
               </div>
 
               <div className="filter-group filter-group-email">
-                <label className="filter-label">Email клиента</label>
+                <label className="filter-label">Клиент</label>
                 <input
                   type="text"
                   className="filter-input"
-                  placeholder="Поиск по email…"
+                  placeholder="Email или @username…"
                   value={searchEmail}
                   onChange={(e) => setSearchEmail(e.target.value)}
                 />
@@ -234,7 +240,17 @@ export function AdminPanel({ onBack, session, onSignOut }) {
                         <td className="cell-price">
                           {b.price ? `${b.price.toLocaleString("ru-RU")} ₽` : "—"}
                         </td>
-                        <td className="cell-email">{b.client_email ?? "—"}</td>
+                        <td className="cell-email">
+                          {b.client_name
+                            ? b.client_name
+                            : b.client_email
+                              ? b.client_email
+                              : b.telegram_username
+                                ? `@${b.telegram_username}`
+                                : b.telegram_id
+                                  ? `TG:${b.telegram_id}`
+                                  : "—"}
+                        </td>
                         <td>
                           <span className={`status-badge ${b.cancelled ? "status-cancelled" : "status-active"}`}>
                             {b.cancelled ? "Отменена" : b.rated ? "Завершена" : "Активна"}
