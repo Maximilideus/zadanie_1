@@ -1,8 +1,27 @@
-import { useState } from "react";
 import { MASTERS_DATA } from "../App.jsx";
 
+// ─── Админ-бар (правый верхний угол) ─────────────────────────────────────
+function AdminBar({ isAdmin, session, onAdminClick, onLoginClick, onSignOut }) {
+  if (!isAdmin && session) return null; // обычный залогиненный — не показываем
+
+  return (
+    <div className="admin-access-bar">
+      {isAdmin && (
+        <>
+          <span className="admin-bar-email">{session.user.email}</span>
+          <button className="admin-bar-btn" onClick={onAdminClick}>Админ-панель</button>
+          <button className="admin-bar-btn" onClick={onSignOut}>Выйти</button>
+        </>
+      )}
+      {!session && (
+        <button className="admin-bar-btn admin-login-btn" onClick={onLoginClick}>🔑</button>
+      )}
+    </div>
+  );
+}
+
 // Блок 1 — Hero
-function HeroSection({ onBook }) {
+function HeroSection({ botUrl }) {
   return (
     <section className="land-hero">
       <div className="land-hero-bg" aria-hidden="true">
@@ -19,10 +38,15 @@ function HeroSection({ onBook }) {
           Диодный лазер нового поколения. Безболезненно, безопасно,
           с&nbsp;гарантией результата уже после первого сеанса.
         </p>
-        <button className="land-btn-primary" onClick={onBook}>
-          Записаться онлайн
-        </button>
-        <p className="land-hero-hint">Без звонков · Выберите мастера и удобное время</p>
+        <div className="landing-cta-buttons">
+          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram">
+            📱 Записаться в Telegram
+          </a>
+          <a href={botUrl + "?start=help"} target="_blank" rel="noopener noreferrer" className="land-btn-telegram-secondary">
+            🤔 Помогу выбрать процедуру
+          </a>
+        </div>
+        <p className="land-hero-hint">Без звонков · Выберите мастера и удобное время в боте</p>
       </div>
     </section>
   );
@@ -121,7 +145,7 @@ function PrepSection() {
 }
 
 // Блок 5 — Мастера
-function MastersSection({ onBook }) {
+function MastersSection({ botUrl }) {
   const masters = Object.entries(MASTERS_DATA);
   return (
     <section className="land-section land-section--alt">
@@ -149,9 +173,9 @@ function MastersSection({ onBook }) {
           ))}
         </div>
         <div style={{ textAlign: "center", marginTop: "32px" }}>
-          <button className="land-btn-primary" onClick={onBook}>
-            Выбрать мастера и записаться
-          </button>
+          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram">
+            📱 Выбрать мастера и записаться
+          </a>
         </div>
       </div>
     </section>
@@ -162,7 +186,7 @@ function MastersSection({ onBook }) {
 function ReviewsSection() {
   const reviews = [
     { name: "Алина К.",    text: "После первого сеанса волоски стали значительно тоньше. Мастер всё объяснила, было совсем не больно!", stars: 5 },
-    { name: "Марина Д.",   text: "Хожу уже третий сеанс — результат виден. Удобная запись онлайн, не нужно звонить.", stars: 5 },
+    { name: "Марина Д.",   text: "Хожу уже третий сеанс — результат виден. Удобная запись через бота, не нужно звонить.", stars: 5 },
     { name: "Светлана П.", text: "Приятная атмосфера, профессиональный подход. Рекомендую всем подругам.", stars: 5 },
   ];
   return (
@@ -185,31 +209,40 @@ function ReviewsSection() {
 }
 
 // Блок 7 — CTA
-function CtaSection({ onBook }) {
+function CtaSection({ botUrl }) {
   return (
     <section className="land-cta">
       <div className="land-cta-inner">
         <h2 className="land-cta-title">Готовы к первому сеансу?</h2>
-        <p className="land-cta-sub">Запишитесь онлайн за 2 минуты — без звонков и ожидания</p>
-        <button className="land-btn-primary land-btn-primary--light" onClick={onBook}>
-          Записаться сейчас
-        </button>
+        <p className="land-cta-sub">Запишитесь через Telegram за 2 минуты — без звонков и ожидания</p>
+        <div className="landing-cta-buttons">
+          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram land-btn-telegram--light">
+            📱 Записаться в Telegram
+          </a>
+        </div>
       </div>
     </section>
   );
 }
 
 // Главный компонент лендинга
-export function LandingPage({ onBook }) {
+export function LandingPage({ botUrl, isAdmin, session, onAdminClick, onLoginClick, onSignOut }) {
   return (
     <div className="land-root">
-      <HeroSection onBook={onBook} />
+      <AdminBar
+        isAdmin={isAdmin}
+        session={session}
+        onAdminClick={onAdminClick}
+        onLoginClick={onLoginClick}
+        onSignOut={onSignOut}
+      />
+      <HeroSection botUrl={botUrl} />
       <WhySection />
       <HowSection />
       <PrepSection />
-      <MastersSection onBook={onBook} />
+      <MastersSection botUrl={botUrl} />
       <ReviewsSection />
-      <CtaSection onBook={onBook} />
+      <CtaSection botUrl={botUrl} />
     </div>
   );
 }

@@ -104,7 +104,7 @@ export function AdminPanel({ onBack, session, onSignOut }) {
             <div className="user-info">
               <span className="user-email">{session.user.email}</span>
               <div className="mode-switcher">
-                <button type="button" className="mode-btn" onClick={onBack}>Клиент</button>
+                <button type="button" className="mode-btn" onClick={onBack}>Сайт</button>
                 <button type="button" className="mode-btn mode-btn-active">Админ</button>
               </div>
               <button type="button" className="signout-btn" onClick={onSignOut}>
@@ -225,6 +225,7 @@ export function AdminPanel({ onBack, session, onSignOut }) {
                       <th>Длит.</th>
                       <th>Цена</th>
                       <th>Клиент</th>
+                      <th>Телефон</th>
                       <th>Статус</th>
                       <th>Создана</th>
                     </tr>
@@ -251,6 +252,7 @@ export function AdminPanel({ onBack, session, onSignOut }) {
                                   ? `TG:${b.telegram_id}`
                                   : "—"}
                         </td>
+                        <td>{b.client_phone || "—"}</td>
                         <td>
                           <span className={`status-badge ${b.cancelled ? "status-cancelled" : "status-active"}`}>
                             {b.cancelled ? "Отменена" : b.rated ? "Завершена" : "Активна"}

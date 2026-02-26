@@ -1537,3 +1537,131 @@ input[type="date"]:hover {
     padding: 8px 10px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Админ-бар на лендинге
+   ═══════════════════════════════════════════════════════════════ */
+
+.admin-access-bar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(61, 44, 34, 0.85);
+  backdrop-filter: blur(8px);
+  border-bottom-left-radius: 12px;
+}
+
+.admin-bar-btn {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.admin-bar-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.admin-login-btn {
+  padding: 4px 8px;
+  font-size: 14px;
+  opacity: 0.4;
+  transition: opacity 0.2s;
+}
+
+.admin-login-btn:hover {
+  opacity: 1;
+}
+
+.admin-bar-email {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Telegram-кнопки на лендинге
+   ═══════════════════════════════════════════════════════════════ */
+
+.land-btn-telegram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #2AABEE, #229ED9);
+  color: #fff;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 4px 15px rgba(42, 171, 238, 0.3);
+}
+
+.land-btn-telegram:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(42, 171, 238, 0.4);
+  color: #fff;
+}
+
+.land-btn-telegram--light {
+  background: linear-gradient(135deg, #fff, #f0f0f0);
+  color: #229ED9;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.land-btn-telegram--light:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  color: #1a8bc7;
+}
+
+.land-btn-telegram-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  padding: 12px 28px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.land-btn-telegram-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.8);
+  color: #fff;
+}
+
+.landing-cta-buttons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+@media (min-width: 480px) {
+  .landing-cta-buttons {
+    flex-direction: row;
+    justify-content: center;
+  }
+}
