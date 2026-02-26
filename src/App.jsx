@@ -5,7 +5,7 @@ import { AdminPanel } from "./components/AdminPanel.jsx";
 import { supabase } from "./supabase.js";
 
 // ─── Админ: замени на свой email ─────────────────────────────────────────
-const ADMIN_EMAIL = "your-email@example.com";
+const ADMIN_EMAIL = "hks14865@gmail.com";
 
 // ─── Ссылка на Telegram-бота ─────────────────────────────────────────────
 export const BOT_URL = "https://t.me/LaserBook_bot";
