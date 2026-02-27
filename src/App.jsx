@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
-import { LandingPage } from "./components/LandingPage.jsx";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HomePage } from "./pages/HomePage.jsx";
+import { LaserPage } from "./pages/LaserPage.jsx";
+import { WaxPage } from "./pages/WaxPage.jsx";
+import { ElectroPage } from "./pages/ElectroPage.jsx";
 import { AuthForm } from "./components/AuthForm.jsx";
 import { AdminPanel } from "./components/AdminPanel.jsx";
 import { supabase } from "./supabase.js";
 
 // ─── Админ: замени на свой email ─────────────────────────────────────────
-const ADMIN_EMAIL = "hks14865@gmail.com";
+const ADMIN_EMAIL = "your-email@example.com";
 
 // ─── Ссылка на Telegram-бота ─────────────────────────────────────────────
 export const BOT_URL = "https://t.me/LaserBook_bot";
@@ -51,13 +55,25 @@ export function App() {
   }
 
   return (
-    <LandingPage
-      botUrl={BOT_URL}
-      isAdmin={isAdmin}
-      session={session}
-      onAdminClick={() => setShowAdmin(true)}
-      onLoginClick={() => setShowLogin(true)}
-      onSignOut={handleSignOut}
-    />
+    <BrowserRouter>
+      <Routes>
+        <Route 
+          path="/" 
+          element={
+            <HomePage
+              botUrl={BOT_URL}
+              isAdmin={isAdmin}
+              session={session}
+              onAdminClick={() => setShowAdmin(true)}
+              onLoginClick={() => setShowLogin(true)}
+              onSignOut={handleSignOut}
+            />
+          } 
+        />
+        <Route path="/laser" element={<LaserPage botUrl={BOT_URL} />} />
+        <Route path="/wax" element={<WaxPage botUrl={BOT_URL} />} />
+        <Route path="/electro" element={<ElectroPage botUrl={BOT_URL} />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

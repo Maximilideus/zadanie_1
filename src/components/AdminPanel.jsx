@@ -1,6 +1,57 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabase.js";
-import { showErrorToast } from "./CustomToast.jsx";
+import { showErrorToast, showSuccessToast } from "./CustomToast.jsx";
+
+// Функция экспорта в CSV
+function exportToCSV(bookings, filename = "bookings.csv") {
+  const headers = [
+    "ID",
+    "Дата записи",
+    "Время",
+    "Услуга",
+    "Мастер",
+    "Длительность (мин)",
+    "Цена (₽)",
+    "Клиент",
+    "Телефон",
+    "Email",
+    "Telegram",
+    "Статус",
+    "Создана"
+  ];
+
+  const rows = bookings.map(b => [
+    b.id,
+    b.date || "",
+    b.time || "",
+    b.service || "",
+    b.master || "",
+    b.duration || "",
+    b.price || "",
+    b.client_name || "",
+    b.client_phone || "",
+    b.client_email || "",
+    b.telegram_username ? `@${b.telegram_username}` : b.telegram_id || "",
+    b.cancelled ? "Отменена" : b.rated ? "Завершена" : "Активна",
+    b.created_at ? new Date(b.created_at).toLocaleString("ru-RU") : ""
+  ]);
+
+  const csvContent = [
+    headers.join(","),
+    ...rows.map(row => row.map(cell => `"${cell}"`).join(","))
+  ].join("\n");
+
+  const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
 export function AdminPanel({ onBack, session, onSignOut }) {
   const [bookings, setBookings] = useState([]);
@@ -202,6 +253,28 @@ export function AdminPanel({ onBack, session, onSignOut }) {
             )}
           </div>
 
+          {/* ─── Быстрые действия ─────────────────────────────── */}
+          <div className="admin-actions">
+            <button 
+              type="button" 
+              className="admin-action-btn admin-action-btn--export"
+              onClick={() => {
+                exportToCSV(filtered, `bookings_${new Date().toISOString().split('T')[0]}.csv`);
+                showSuccessToast(`Экспортировано ${filtered.length} записей`);
+              }}
+              disabled={filtered.length === 0}
+            >
+              📥 Экспорт в CSV
+            </button>
+            <button 
+              type="button" 
+              className="admin-action-btn admin-action-btn--print"
+              onClick={() => window.print()}
+            >
+              🖨️ Печать
+            </button>
+          </div>
+
           {/* ─── Таблица записей ─────────────────────────────── */}
           {isLoading ? (
             <p className="admin-loading">Загружаем записи…</p>
@@ -226,6 +299,7 @@ export function AdminPanel({ onBack, session, onSignOut }) {
                       <th>Цена</th>
                       <th>Клиент</th>
                       <th>Телефон</th>
+                      <th>Действия</th>
                       <th>Статус</th>
                       <th>Создана</th>
                     </tr>
@@ -253,6 +327,28 @@ export function AdminPanel({ onBack, session, onSignOut }) {
                                   : "—"}
                         </td>
                         <td>{b.client_phone || "—"}</td>
+                        <td className="cell-actions">
+                          {b.client_phone && (
+                            <a 
+                              href={`tel:${b.client_phone}`}
+                              className="action-link"
+                              title="Позвонить"
+                            >
+                              📞
+                            </a>
+                          )}
+                          {b.telegram_username && (
+                            <a 
+                              href={`https://t.me/${b.telegram_username}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="action-link"
+                              title={`Написать @${b.telegram_username}`}
+                            >
+                              💬
+                            </a>
+                          )}
+                        </td>
                         <td>
                           <span className={`status-badge ${b.cancelled ? "status-cancelled" : "status-active"}`}>
                             {b.cancelled ? "Отменена" : b.rated ? "Завершена" : "Активна"}
