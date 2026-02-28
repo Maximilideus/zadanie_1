@@ -1,0 +1,197 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CLIENT
+  MASTER
+  ADMIN
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String
+  address   String
+  timezone  String
+
+  users        User[]
+  services     Service[]
+  packages     Package[]
+  workingHours WorkingHour[]
+  appointments Appointment[]
+  exceptions   Exception[] @relation("LocationExceptions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id    String   @id @default(uuid())
+  name  String
+  email String   @unique
+  role  UserRole
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+
+  clientAppointments Appointment[] @relation("ClientAppointments")
+  masterAppointments Appointment[] @relation("MasterAppointments")
+
+  exceptions Exception[] @relation("UserExceptions")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId])
+}
+
+model Service {
+  id          String @id @default(uuid())
+  name        String
+  durationMin Int
+  price       Int
+
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+
+  packageLinks     PackageService[]
+  appointmentLinks AppointmentService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId])
+}
+
+model Package {
+  id    String @id @default(uuid())
+  name  String
+  price Int
+
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+
+  services PackageService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId])
+}
+
+model PackageService {
+  id String @id @default(uuid())
+
+  packageId String
+  serviceId String
+
+  package Package @relation(fields: [packageId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@unique([packageId, serviceId])
+}
+
+model Appointment {
+  id String @id @default(uuid())
+
+  clientId String
+  client   User @relation("ClientAppointments", fields: [clientId], references: [id])
+
+  masterId String
+  master   User @relation("MasterAppointments", fields: [masterId], references: [id])
+
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+
+  startAt DateTime
+  endAt   DateTime
+
+  status AppointmentStatus @default(PENDING)
+
+  services AppointmentService[]
+  noShow   NoShow?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([masterId, startAt])
+  @@index([clientId])
+  @@index([locationId])
+}
+
+model AppointmentService {
+  id String @id @default(uuid())
+
+  appointmentId String
+  serviceId     String
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  service     Service     @relation(fields: [serviceId], references: [id])
+
+  @@unique([appointmentId, serviceId])
+}
+
+model WorkingHour {
+  id String @id @default(uuid())
+
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+
+  dayOfWeek Int
+
+  startTime DateTime @db.Time
+  endTime   DateTime @db.Time
+
+  createdAt DateTime @default(now())
+
+  @@index([locationId, dayOfWeek])
+}
+
+model Exception {
+  id String @id @default(uuid())
+
+  masterId String?
+  master   User? @relation("UserExceptions", fields: [masterId], references: [id])
+
+  locationId String?
+  location   Location? @relation("LocationExceptions", fields: [locationId], references: [id])
+
+  date    DateTime
+  startAt DateTime?
+  endAt   DateTime?
+
+  reason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([date])
+  @@index([masterId])
+  @@index([locationId])
+}
+
+model NoShow {
+  id String @id @default(uuid())
+
+  appointmentId String @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+
+  createdAt DateTime @default(now())
+}
