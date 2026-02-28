@@ -5,15 +5,16 @@ import { env } from "../config/env"
 
 const rateLimitPlugin: FastifyPluginAsync = async (app: FastifyInstance) => {
   await app.register(rateLimit, {
+    global: true,
+    hook: "onRequest",
     max: env.RATE_LIMIT_MAX,
     timeWindow: env.RATE_LIMIT_WINDOW,
     keyGenerator: (request) => request.ip,
-    errorResponseBuilder: (_request, context) => ({
-      statusCode: 429,
-      error: "Too Many Requests",
-      message: `Rate limit exceeded. Try again in ${Math.ceil(context.ttl / 1000)} seconds.`,
-      retryAfter: Math.ceil(context.ttl / 1000),
-    }),
+    errorResponseBuilder: (_request, context) => {
+      const err = new Error("Rate limit exceeded")
+      Object.assign(err, { statusCode: context.statusCode })
+      return err
+    },
   })
 
   app.log.info(

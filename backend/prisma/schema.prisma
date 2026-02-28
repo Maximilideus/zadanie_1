@@ -9,21 +9,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-}
-
-enum UserRole {
-  CLIENT
-  MASTER
-  ADMIN
-}
-
-enum AppointmentStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-  NO_SHOW
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Location {
@@ -43,11 +30,15 @@ model Location {
   updatedAt DateTime @updatedAt
 }
 
+// UserState: "IDLE" | "CONSULTING" | "BOOKING_FLOW" | "BOOKED"
 model User {
-  id    String   @id @default(uuid())
-  name  String
-  email String   @unique
-  role  UserRole
+  id       String   @id @default(uuid())
+  name     String
+  email    String   @unique
+  password String
+  role       String   @default("CLIENT")
+  state      String   @default("IDLE")
+  telegramId String?  @unique
 
   locationId String?
   location   Location? @relation(fields: [locationId], references: [id])
@@ -124,7 +115,7 @@ model Appointment {
   startAt DateTime
   endAt   DateTime
 
-  status AppointmentStatus @default(PENDING)
+  status String            @default("PENDING")
 
   services AppointmentService[]
   noShow   NoShow?
@@ -157,8 +148,8 @@ model WorkingHour {
 
   dayOfWeek Int
 
-  startTime DateTime @db.Time
-  endTime   DateTime @db.Time
+  startTime DateTime
+  endTime   DateTime
 
   createdAt DateTime @default(now())
 
