@@ -47,6 +47,7 @@ model User {
   masterAppointments Appointment[] @relation("MasterAppointments")
 
   exceptions Exception[] @relation("UserExceptions")
+  bookings    Booking[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -185,4 +186,25 @@ model NoShow {
   appointment   Appointment @relation(fields: [appointmentId], references: [id])
 
   createdAt DateTime @default(now())
+}
+
+// BookingStatus: PENDING | CONFIRMED | CANCELLED | COMPLETED
+model Booking {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  serviceId  String?
+  masterId   String?
+  locationId String?
+  scheduledAt DateTime?
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  confirmedAt DateTime?
+  cancelledAt DateTime?
+  completedAt DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
 }

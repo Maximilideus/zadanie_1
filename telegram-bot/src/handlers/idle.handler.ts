@@ -1,5 +1,5 @@
 import type { Context } from "grammy"
 
-export async function idleHandler(ctx: Context, _userId: string): Promise<void> {
-  await ctx.reply("Welcome. Type 'start' to begin consultation.")
+export async function idleHandler(ctx: Context): Promise<void> {
+  await ctx.reply("Вы находитесь в начальном состоянии. Используйте /consult для начала.")
 }

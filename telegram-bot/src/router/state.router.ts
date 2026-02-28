@@ -5,23 +5,19 @@ import { consultingHandler } from "../handlers/consulting.handler.js"
 import { bookingHandler } from "../handlers/booking.handler.js"
 import { bookedHandler } from "../handlers/booked.handler.js"
 
-export async function stateRouter(
-  state: UserState,
-  ctx: Context,
-  userId: string
-): Promise<void> {
+export async function stateRouter(ctx: Context, state: UserState): Promise<void> {
   switch (state) {
     case "IDLE":
-      return idleHandler(ctx, userId)
+      return idleHandler(ctx)
     case "CONSULTING":
-      return consultingHandler(ctx, userId)
+      return consultingHandler(ctx)
     case "BOOKING_FLOW":
-      return bookingHandler(ctx, userId)
+      return bookingHandler(ctx)
     case "BOOKED":
-      return bookedHandler(ctx, userId)
+      return bookedHandler(ctx)
     default: {
       const _exhaust: never = state
-      return idleHandler(ctx, userId)
+      return idleHandler(ctx)
     }
   }
 }

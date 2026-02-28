@@ -1,6 +1,7 @@
 import crypto from "node:crypto"
 import { prisma } from "../../lib/prisma"
 import { hashPassword } from "../auth/auth.service"
+import { changeUserState, type UserState } from "../user/state.service"
 
 export async function findOrCreateByTelegram(telegramId: string, name?: string) {
   const existing = await prisma.user.findUnique({
@@ -29,4 +30,15 @@ export async function findOrCreateByTelegram(telegramId: string, name?: string) 
   })
 
   return { userId: newUser.id, state: newUser.state }
+}
+
+export async function updateStateByTelegramId(telegramId: string, newState: UserState) {
+  const user = await prisma.user.findUnique({
+    where: { telegramId },
+    select: { id: true },
+  })
+
+  if (!user) throw new Error("NOT_FOUND")
+
+  return changeUserState(user.id, newState)
 }

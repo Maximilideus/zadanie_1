@@ -5,7 +5,7 @@ export type UserState = (typeof USER_STATES)[number]
 
 const ALLOWED_TRANSITIONS: Record<UserState, UserState[]> = {
   IDLE: ["CONSULTING"],
-  CONSULTING: ["BOOKING_FLOW"],
+  CONSULTING: ["BOOKING_FLOW", "IDLE"],
   BOOKING_FLOW: ["BOOKED"],
   BOOKED: ["IDLE", "CONSULTING"],
 }
@@ -34,10 +34,32 @@ export async function changeUserState(userId: string, newState: UserState) {
   if (!user) throw new Error("NOT_FOUND")
 
   const currentState = user.state as UserState
+  if (newState === "IDLE") {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { state: newState },
+    })
+    return { userId: user.id, oldState: currentState, newState }
+  }
   const allowed = ALLOWED_TRANSITIONS[currentState]
-
   if (!allowed.includes(newState)) {
     throw new Error("INVALID_TRANSITION")
+  }
+
+  if (newState === "BOOKED") {
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { state: newState },
+      })
+      await tx.booking.create({
+        data: {
+          userId: user.id,
+          status: "PENDING",
+        },
+      })
+    })
+    return { userId: user.id, oldState: currentState, newState }
   }
 
   await prisma.user.update({
