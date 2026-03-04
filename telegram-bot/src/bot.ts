@@ -1,6 +1,6 @@
 import "dotenv/config"
 import { Bot } from "grammy"
-import { telegramAuth, getUserByTelegramId, updateTelegramState } from "./api/backend.client.js"
+import { telegramAuth, getUserByTelegramId, updateTelegramState, getUserBookings } from "./api/backend.client.js"
 import { stateRouter } from "./router/state.router.js"
 
 const UNAVAILABLE = "Сервис временно недоступен. Попробуйте позже."
@@ -35,7 +35,8 @@ bot.command("help", async (ctx) => {
       "/status — показать текущий статус\n" +
       "/consult — начать консультацию\n" +
       "/book — перейти к записи\n" +
-      "/cancel — отменить действие и вернуться в начало"
+      "/cancel — отменить действие и вернуться в начало\n" +
+      "/my_bookings — мои записи"
   )
 })
 
@@ -90,6 +91,38 @@ bot.command("book", async (ctx) => {
 
     await updateTelegramState(telegramId, "BOOKING_FLOW")
     await stateRouter(ctx, "BOOKING_FLOW")
+  } catch {
+    await ctx.reply(UNAVAILABLE)
+  }
+})
+
+bot.command("my_bookings", async (ctx) => {
+  const from = ctx.from
+  if (!from) return
+
+  const telegramId = String(from.id)
+
+  try {
+    const bookings = await getUserBookings(telegramId)
+
+    if (bookings.length === 0) {
+      await ctx.reply("У вас пока нет записей.")
+      return
+    }
+
+    const lines = ["Ваши записи:"]
+    bookings.forEach((b, i) => {
+      const created = new Date(b.createdAt).toLocaleDateString("ru-RU", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+      lines.push("")
+      lines.push(`${i + 1}) ID: ${b.id}`)
+      lines.push(`   Статус: ${b.status}`)
+      lines.push(`   Создано: ${created}`)
+    })
+    await ctx.reply(lines.join("\n"))
   } catch {
     await ctx.reply(UNAVAILABLE)
   }

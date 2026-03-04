@@ -47,3 +47,22 @@ export async function updateTelegramState(
 
   return (await res.json()) as UpdateStateResponse
 }
+
+export interface UserBookingItem {
+  id: string
+  status: string
+  createdAt: string
+  scheduledAt: string | null
+}
+
+export async function getUserBookings(
+  telegramId: string
+): Promise<UserBookingItem[]> {
+  const res = await fetch(`${BACKEND_URL}/bookings/user/${encodeURIComponent(telegramId)}`)
+
+  if (!res.ok) {
+    throw new Error(`Backend error: ${res.status}`)
+  }
+
+  return (await res.json()) as UserBookingItem[]
+}

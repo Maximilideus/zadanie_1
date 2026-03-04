@@ -9,6 +9,7 @@ import { appointmentRoutes } from "./modules/appointment/appointment.routes"
 import { authRoutes } from "./modules/auth/auth.routes"
 import { adminRoutes } from "./modules/admin/admin.routes"
 import { telegramRoutes } from "./modules/telegram/telegram.routes"
+import { bookingRoutes } from "./modules/booking/booking.routes"
 import requestIdPlugin from "./plugins/requestId"
 import rateLimitPlugin from "./plugins/rateLimit"
 import jwtPlugin from "./plugins/jwt"
@@ -36,6 +37,15 @@ app.after(() => {
   // Health checks
   app.get("/ping", async () => {
     return { message: "pong" }
+  })
+
+  app.get("/health/database", async (_request, reply) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      return reply.status(200).send({ database: "ok" })
+    } catch {
+      return reply.status(503).send({ database: "error" })
+    }
   })
 
   app.get("/health", async (request, reply) => {
@@ -74,6 +84,7 @@ app.after(() => {
   app.register(masterRoutes, { prefix: "/masters" })
   app.register(appointmentRoutes, { prefix: "/appointments" })
   app.register(adminRoutes, { prefix: "/admin" })
+  app.register(bookingRoutes, { prefix: "/bookings" })
 })
 
 // Global error handler
@@ -104,11 +115,27 @@ app.setErrorHandler((error, request, reply) => {
     })
   }
 
+  if (err.message === "INVALID_BOOKING_TRANSITION") {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Invalid booking status transition",
+    })
+  }
+
   if (err.message === "NOT_FOUND") {
     return reply.status(404).send({
       statusCode: 404,
       error: "Not Found",
       message: "Resource not found",
+    })
+  }
+
+  if (err.message === "Database schema is not synchronized. Please run prisma migrate.") {
+    return reply.status(503).send({
+      statusCode: 503,
+      error: "Service Unavailable",
+      message: err.message,
     })
   }
 

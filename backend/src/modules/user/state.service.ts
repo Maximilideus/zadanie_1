@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma"
+import { createBooking } from "../booking/booking.service"
 
 export const USER_STATES = ["IDLE", "CONSULTING", "BOOKING_FLOW", "BOOKED"] as const
 export type UserState = (typeof USER_STATES)[number]
@@ -52,12 +53,7 @@ export async function changeUserState(userId: string, newState: UserState) {
         where: { id: userId },
         data: { state: newState },
       })
-      await tx.booking.create({
-        data: {
-          userId: user.id,
-          status: "PENDING",
-        },
-      })
+      await createBooking(user.id, tx)
     })
     return { userId: user.id, oldState: currentState, newState }
   }
