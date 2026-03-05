@@ -1,7 +1,16 @@
 import "dotenv/config"
 import { Bot } from "grammy"
-import { telegramAuth, getUserByTelegramId, updateTelegramState, getUserBookings } from "./api/backend.client.js"
+import { telegramAuth, getUserByTelegramId, updateTelegramState, getUserBookings, createTelegramBooking } from "./api/backend.client.js"
 import { stateRouter } from "./router/state.router.js"
+import {
+  onServiceChosen,
+  onMasterChosen,
+  onDateEntered,
+  onTimeSlotChosen,
+  getBookingSession,
+  clearBookingSession,
+  isDateString,
+} from "./handlers/bookingFlow.js"
 
 const UNAVAILABLE = "Сервис временно недоступен. Попробуйте позже."
 
@@ -89,7 +98,17 @@ bot.command("book", async (ctx) => {
       return
     }
 
-    await updateTelegramState(telegramId, "BOOKING_FLOW")
+    try {
+      await createTelegramBooking(telegramId)
+    } catch (e) {
+      if (e instanceof Error && e.message === "ACTIVE_BOOKING_EXISTS") {
+        await ctx.reply("У вас уже есть активная запись. Используйте /my_bookings.")
+        await updateTelegramState(telegramId, "BOOKING_FLOW")
+        await stateRouter(ctx, "BOOKING_FLOW")
+        return
+      }
+      throw e
+    }
     await stateRouter(ctx, "BOOKING_FLOW")
   } catch {
     await ctx.reply(UNAVAILABLE)
@@ -133,6 +152,7 @@ bot.command("cancel", async (ctx) => {
   if (!from) return
 
   const telegramId = String(from.id)
+  clearBookingSession(from.id)
 
   try {
     await updateTelegramState(telegramId, "IDLE")
@@ -140,6 +160,31 @@ bot.command("cancel", async (ctx) => {
     await ctx.reply("Действие отменено. Вы возвращены в начальное состояние.")
   } catch {
     await ctx.reply(UNAVAILABLE)
+  }
+})
+
+bot.callbackQuery(/^svc:(.+)$/, async (ctx) => {
+  await onServiceChosen(ctx, ctx.match[1])
+  await ctx.answerCallbackQuery().catch(() => {})
+})
+
+bot.callbackQuery(/^mst:(.+)$/, async (ctx) => {
+  await onMasterChosen(ctx, ctx.match[1])
+  await ctx.answerCallbackQuery().catch(() => {})
+})
+
+bot.callbackQuery(/^t:(.+)$/, async (ctx) => {
+  await onTimeSlotChosen(ctx, ctx.match[1])
+  await ctx.answerCallbackQuery().catch(() => {})
+})
+
+bot.on("message:text", async (ctx) => {
+  const text = ctx.message.text?.trim() ?? ""
+  const from = ctx.from
+  if (!from || !text) return
+  const session = getBookingSession(from.id)
+  if (session.serviceId && session.masterId && isDateString(text)) {
+    await onDateEntered(ctx, text, session.serviceId, session.masterId)
   }
 })
 

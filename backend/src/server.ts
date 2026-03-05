@@ -9,11 +9,17 @@ import { appointmentRoutes } from "./modules/appointment/appointment.routes"
 import { authRoutes } from "./modules/auth/auth.routes"
 import { adminRoutes } from "./modules/admin/admin.routes"
 import { telegramRoutes } from "./modules/telegram/telegram.routes"
+import { telegramBookingsRoutes } from "./routes/telegramBookings"
+import { bookingStepsRoutes } from "./routes/telegram/bookingSteps"
+import { telegramAvailabilityRoutes } from "./routes/telegramAvailability"
+import { telegramMastersRoutes } from "./routes/telegramMasters"
+import { telegramServicesRoutes } from "./routes/telegramServices"
 import { bookingRoutes } from "./modules/booking/booking.routes"
 import requestIdPlugin from "./plugins/requestId"
 import rateLimitPlugin from "./plugins/rateLimit"
 import jwtPlugin from "./plugins/jwt"
 import { authenticate } from "./middlewares/auth.middleware"
+import { startExpirePendingBookingsJob } from "./jobs/expirePendingBookings"
 
 const app = Fastify({
   logger: true,
@@ -78,6 +84,11 @@ app.after(() => {
   // Public routes
   app.register(authRoutes, { prefix: "/auth" })
   app.register(telegramRoutes, { prefix: "/telegram" })
+  app.register(telegramBookingsRoutes, { prefix: "/telegram" })
+  app.register(bookingStepsRoutes, { prefix: "/telegram" })
+  app.register(telegramAvailabilityRoutes, { prefix: "/telegram" })
+  app.register(telegramMastersRoutes, { prefix: "/telegram" })
+  app.register(telegramServicesRoutes, { prefix: "/telegram" })
 
   // Protected routes
   app.register(userRoutes, { prefix: "/users" })
@@ -120,6 +131,62 @@ app.setErrorHandler((error, request, reply) => {
       statusCode: 400,
       error: "Bad Request",
       message: "Invalid booking status transition",
+    })
+  }
+
+  if (err.message === "ACTIVE_BOOKING_EXISTS") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "User already has an active booking",
+    })
+  }
+
+  if (err.message === "NO_PENDING_BOOKING") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "No active PENDING booking for this user",
+    })
+  }
+
+  if (err.message === "SELECT_SERVICE_FIRST") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "Select service first",
+    })
+  }
+
+  if (err.message === "MASTER_CANNOT_PERFORM_SERVICE") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "Master cannot perform selected service",
+    })
+  }
+
+  if (err.message === "INVALID_SCHEDULED_AT") {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Invalid scheduledAt date",
+    })
+  }
+
+  if (err.message === "INVALID_DATE") {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Invalid date; use YYYY-MM-DD",
+    })
+  }
+
+  if (err.message === "DATE_OUT_OF_RANGE") {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Date must be within the next 60 days",
     })
   }
 
@@ -173,9 +240,12 @@ app.setErrorHandler((error, request, reply) => {
   })
 })
 
+let expireBookingsInterval: NodeJS.Timeout | null = null
+
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {
   app.log.info({ signal }, "Shutting down gracefully...")
+  if (expireBookingsInterval) clearInterval(expireBookingsInterval)
 
   try {
     await app.close()
@@ -197,6 +267,10 @@ const start = async () => {
   try {
     await prisma.$connect()
     app.log.info("Database connected successfully")
+    
+    app.ready().then(() => {
+      console.log(app.printRoutes())
+    })
 
     await app.listen({ port: env.PORT })
     app.log.info(`Server running on http://localhost:${env.PORT}`)

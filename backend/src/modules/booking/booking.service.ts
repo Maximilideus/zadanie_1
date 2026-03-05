@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client"
+import { Prisma, type BookingStatus as PrismaBookingStatus } from "@prisma/client"
 import { prisma } from "../../lib/prisma"
 import type { BookingStatus, BookingAction } from "./booking.status.machine"
 import { transition } from "./booking.status.machine"
@@ -26,16 +26,19 @@ const bookingSelect = {
   completedAt: true,
 } as const
 
-function applyStatusTimestamps(
-  newStatus: BookingStatus
-): { status: string; confirmedAt?: Date; cancelledAt?: Date; completedAt?: Date } {
+function applyStatusTimestamps(newStatus: BookingStatus): {
+  status: PrismaBookingStatus
+  confirmedAt?: Date
+  cancelledAt?: Date
+  completedAt?: Date
+} {
   const now = new Date()
   const data: {
-    status: string
+    status: PrismaBookingStatus
     confirmedAt?: Date
     cancelledAt?: Date
     completedAt?: Date
-  } = { status: newStatus }
+  } = { status: newStatus as PrismaBookingStatus }
   if (newStatus === "CONFIRMED") data.confirmedAt = now
   if (newStatus === "CANCELLED") data.cancelledAt = now
   if (newStatus === "COMPLETED") data.completedAt = now

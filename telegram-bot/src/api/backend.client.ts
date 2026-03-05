@@ -66,3 +66,139 @@ export async function getUserBookings(
 
   return (await res.json()) as UserBookingItem[]
 }
+
+export interface CreateTelegramBookingResponse {
+  id: string
+  userId: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  scheduledAt: string | null
+  confirmedAt: string | null
+  cancelledAt: string | null
+  completedAt: string | null
+}
+
+export async function createTelegramBooking(
+  telegramId: string
+): Promise<CreateTelegramBookingResponse> {
+  const res = await fetch(`${BACKEND_URL}/telegram/bookings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId }),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    if (res.status === 409) throw new Error("ACTIVE_BOOKING_EXISTS")
+    throw new Error(`Backend error: ${res.status} ${text}`)
+  }
+
+  return (await res.json()) as CreateTelegramBookingResponse
+}
+
+async function parseError(res: Response): Promise<never> {
+  const body = await res.json().catch(() => ({})) as { message?: string }
+  const msg = body.message ?? `Backend error: ${res.status}`
+  throw new Error(msg)
+}
+
+export interface ServiceItem {
+  id: string
+  name: string
+  durationMin: number
+  price: number
+  locationId: string
+}
+
+export async function getServices(locationId?: string): Promise<ServiceItem[]> {
+  const url = new URL(`${BACKEND_URL}/telegram/services`)
+  if (locationId) url.searchParams.set("locationId", locationId)
+  const res = await fetch(url.toString())
+  if (!res.ok) return parseError(res)
+  const data = (await res.json()) as { services: ServiceItem[] }
+  return data.services
+}
+
+export interface MasterItem {
+  id: string
+  name: string
+}
+
+export async function getMasters(serviceId?: string): Promise<MasterItem[]> {
+  const url = new URL(`${BACKEND_URL}/telegram/masters`)
+  if (serviceId) url.searchParams.set("serviceId", serviceId)
+  const res = await fetch(url.toString())
+  if (!res.ok) return parseError(res)
+  const data = (await res.json()) as { masters: MasterItem[] }
+  return data.masters
+}
+
+export interface AvailabilityResponse {
+  timezone: string
+  slots: string[]
+}
+
+export async function getAvailability(
+  serviceId: string,
+  masterId: string,
+  date: string
+): Promise<AvailabilityResponse> {
+  const url = new URL(`${BACKEND_URL}/telegram/availability`)
+  url.searchParams.set("serviceId", serviceId)
+  url.searchParams.set("masterId", masterId)
+  url.searchParams.set("date", date)
+  const res = await fetch(url.toString())
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as AvailabilityResponse
+}
+
+export interface BookingUpdateResponse {
+  id: string
+  userId: string
+  serviceId: string | null
+  masterId: string | null
+  locationId: string | null
+  status: string
+  scheduledAt: string | null
+  [key: string]: unknown
+}
+
+export async function setBookingService(
+  telegramId: string,
+  serviceId: string
+): Promise<BookingUpdateResponse> {
+  const res = await fetch(`${BACKEND_URL}/telegram/bookings/service`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId, serviceId }),
+  })
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as BookingUpdateResponse
+}
+
+export async function setBookingMaster(
+  telegramId: string,
+  masterId: string
+): Promise<BookingUpdateResponse> {
+  const res = await fetch(`${BACKEND_URL}/telegram/bookings/master`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId, masterId }),
+  })
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as BookingUpdateResponse
+}
+
+export async function setBookingTime(
+  telegramId: string,
+  scheduledAt: string
+): Promise<BookingUpdateResponse> {
+  const res = await fetch(`${BACKEND_URL}/telegram/bookings/time`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId, scheduledAt }),
+  })
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as BookingUpdateResponse
+}

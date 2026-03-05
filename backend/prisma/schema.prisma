@@ -8,9 +8,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// PostgreSQL required for Prisma enum support (SQLite connector does not support enums)
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Location {
@@ -45,6 +46,7 @@ model User {
 
   clientAppointments Appointment[] @relation("ClientAppointments")
   masterAppointments Appointment[] @relation("MasterAppointments")
+  masterServices     MasterService[]
 
   exceptions Exception[] @relation("UserExceptions")
   bookings    Booking[]
@@ -66,11 +68,27 @@ model Service {
 
   packageLinks     PackageService[]
   appointmentLinks AppointmentService[]
+  masterLinks      MasterService[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([locationId])
+}
+
+model MasterService {
+  id        String @id @default(uuid())
+  masterId  String
+  serviceId String
+
+  master  User    @relation(fields: [masterId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([masterId, serviceId])
+  @@index([masterId])
+  @@index([serviceId])
 }
 
 model Package {
@@ -141,16 +159,19 @@ model AppointmentService {
   @@unique([appointmentId, serviceId])
 }
 
+/// dayOfWeek: 1 = Monday, 7 = Sunday (ISO weekday)
 model WorkingHour {
   id String @id @default(uuid())
 
   locationId String
   location   Location @relation(fields: [locationId], references: [id])
 
-  dayOfWeek Int
+  dayOfWeek Int // 1-7 (Mon-Sun)
 
-  startTime DateTime
-  endTime   DateTime
+  /// Time of day, 24h format "HH:MM" (e.g. "09:00")
+  startTime String
+  /// Time of day, 24h format "HH:MM" (e.g. "18:00")
+  endTime   String
 
   createdAt DateTime @default(now())
 
@@ -188,7 +209,13 @@ model NoShow {
   createdAt DateTime @default(now())
 }
 
-// BookingStatus: PENDING | CONFIRMED | CANCELLED | COMPLETED
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
 model Booking {
   id         String   @id @default(uuid())
   userId     String
@@ -197,14 +224,16 @@ model Booking {
   masterId   String?
   locationId String?
   scheduledAt DateTime?
-  status     String   @default("PENDING")
+  status     BookingStatus @default(PENDING)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   confirmedAt DateTime?
   cancelledAt DateTime?
   completedAt DateTime?
+  expiresAt   DateTime?
 
   @@index([userId])
   @@index([status])
   @@index([scheduledAt])
+  @@index([expiresAt])
 }
