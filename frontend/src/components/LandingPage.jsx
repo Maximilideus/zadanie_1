@@ -1,5 +1,4 @@
 import { MASTERS_DATA } from "../App.jsx";
-import { StickyBookButton } from "./StickyBookButton.jsx";
 import { useScrollAnimation } from "./useScrollAnimation.js";
 
 // ─── Админ-бар (правый верхний угол) ─────────────────────────────────────
@@ -42,7 +41,7 @@ function HeroSection({ botUrl }) {
         </p>
         <div className="landing-cta-buttons">
           <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram">
-            Записаться онлайн
+            Записаться в Telegram
           </a>
         </div>
         <p className="land-hero-hint">Запись через Telegram · Без звонков</p>
@@ -577,7 +576,7 @@ function CtaSection({ botUrl }) {
         <p className="land-cta-sub">Запишитесь онлайн за 2 минуты · Ответим на все вопросы в Telegram</p>
         <div className="landing-cta-buttons">
           <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram land-btn-telegram--light">
-            Записаться онлайн
+            Записаться в Telegram
           </a>
         </div>
       </div>
@@ -596,7 +595,6 @@ export function LandingPage({ botUrl, isAdmin, session, onAdminClick, onLoginCli
         onLoginClick={onLoginClick}
         onSignOut={onSignOut}
       />
-      <StickyBookButton botUrl={botUrl} />
       <HeroSection botUrl={botUrl} />
       <ServicesNavSection />
       <LaserSection />

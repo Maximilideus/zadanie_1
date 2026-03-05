@@ -11,8 +11,8 @@ import { supabase } from "./supabase.js";
 // ─── Админ: замени на свой email ─────────────────────────────────────────
 const ADMIN_EMAIL = "your-email@example.com";
 
-// ─── Ссылка на Telegram-бота ─────────────────────────────────────────────
-export const BOT_URL = "https://t.me/LaserBook_bot";
+// ─── Ссылка на Telegram-бота (единая константа для всех кнопок записи) ───
+export const TELEGRAM_BOOK_URL = "https://t.me/LaserBook_bot";
 
 export const MASTERS_DATA = {
   "Анна":    { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Anna",   rating: 4.9, specialization: "Депиляция" },
@@ -61,7 +61,7 @@ export function App() {
           path="/" 
           element={
             <HomePage
-              botUrl={BOT_URL}
+              botUrl={TELEGRAM_BOOK_URL}
               isAdmin={isAdmin}
               session={session}
               onAdminClick={() => setShowAdmin(true)}
@@ -70,9 +70,9 @@ export function App() {
             />
           } 
         />
-        <Route path="/laser" element={<LaserPage botUrl={BOT_URL} />} />
-        <Route path="/wax" element={<WaxPage botUrl={BOT_URL} />} />
-        <Route path="/electro" element={<ElectroPage botUrl={BOT_URL} />} />
+        <Route path="/laser" element={<LaserPage botUrl={TELEGRAM_BOOK_URL} />} />
+        <Route path="/wax" element={<WaxPage botUrl={TELEGRAM_BOOK_URL} />} />
+        <Route path="/electro" element={<ElectroPage botUrl={TELEGRAM_BOOK_URL} />} />
       </Routes>
     </BrowserRouter>
   );

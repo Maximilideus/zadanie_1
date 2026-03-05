@@ -344,7 +344,7 @@ export function ElectroPage({ botUrl }) {
           </div>
           <div className="lp-price-cta">
             <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
-              Записаться и уточнить стоимость
+              Записаться в Telegram
             </a>
           </div>
         </div>

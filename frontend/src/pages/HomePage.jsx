@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { MASTERS_DATA } from "../App.jsx";
-import { StickyBookButton } from "../components/StickyBookButton.jsx";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
 
 // ═══════════════════════════════════════════════════════════════
@@ -334,7 +333,7 @@ function MassageSection({ botUrl }) {
                 <span className="land-massage-tag">{m.for}</span>
               </div>
               <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-massage-btn">
-                Записаться
+                Записаться в Telegram
               </a>
             </div>
           ))}
@@ -669,7 +668,7 @@ function FaqItem({ question, answer }) {
   );
 }
 
-function FaqSection() {
+function FaqSection({ botUrl }) {
   const [activeTab, setActiveTab] = useState("general");
   const filtered = FAQ_ITEMS.filter((item) => item.cat === activeTab);
 
@@ -701,7 +700,7 @@ function FaqSection() {
         </div>
         <div className="faq-footer">
           <p>Не нашли ответ на свой вопрос?</p>
-          <a href="https://t.me/LaserBook_bot" target="_blank" rel="noopener noreferrer" className="faq-footer-link">
+          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="faq-footer-link">
             Спросите в Telegram →
           </a>
         </div>
@@ -722,7 +721,7 @@ function CtaSection({ botUrl }) {
         <p className="land-cta-sub">Запишитесь онлайн за 2 минуты · Ответим на все вопросы в Telegram</p>
         <div className="landing-cta-buttons">
           <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram land-btn-telegram--light">
-            Записаться онлайн
+            Записаться в Telegram
           </a>
         </div>
       </div>
@@ -773,7 +772,6 @@ export function HomePage({ botUrl, isAdmin, session, onAdminClick, onLoginClick,
         onLoginClick={onLoginClick}
         onSignOut={onSignOut}
       />
-      <StickyBookButton botUrl={botUrl} />
       <HeroSection botUrl={botUrl} />
       <WhyUsSection />
       <ServicesSection />
@@ -782,7 +780,7 @@ export function HomePage({ botUrl, isAdmin, session, onAdminClick, onLoginClick,
       <MastersSection />
       <TrustSection />
       <ReviewsSection />
-      <FaqSection />
+      <FaqSection botUrl={botUrl} />
       <CtaSection botUrl={botUrl} />
       <ContactsSection />
     </div>

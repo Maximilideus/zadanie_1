@@ -39,10 +39,10 @@ export function StickyBookButton({ botUrl }) {
       target="_blank"
       rel="noopener noreferrer"
       className={`sticky-book-btn ${isVisible ? "sticky-book-btn--visible" : ""}`}
-      aria-label="Записаться онлайн"
+      aria-label="Записаться в Telegram"
     >
       <span className="sticky-book-btn__icon">📱</span>
-      <span className="sticky-book-btn__text">Записаться</span>
+      <span className="sticky-book-btn__text">Записаться в Telegram</span>
     </a>
   );
 }
