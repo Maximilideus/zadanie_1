@@ -12,7 +12,7 @@ import { supabase } from "./supabase.js";
 const ADMIN_EMAIL = "your-email@example.com";
 
 // ─── Ссылка на Telegram-бота (единая константа для всех кнопок записи) ───
-export const TELEGRAM_BOOK_URL = "https://t.me/LaserBook_bot";
+export const TELEGRAM_BOOK_URL = "https://t.me/my_salon_ai_assistant_bot";
 
 export const MASTERS_DATA = {
   "Анна":    { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Anna",   rating: 4.9, specialization: "Депиляция" },

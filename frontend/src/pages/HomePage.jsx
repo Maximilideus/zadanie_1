@@ -750,7 +750,7 @@ function ContactsSection() {
           </div>
           <div className="land-contact-block">
             <h3 className="land-h3">Связь</h3>
-            <p>Telegram: @LaserBook_bot<br />Запись онлайн 24/7</p>
+            <p>Telegram: @my_salon_ai_assistant_bot<br />Запись онлайн 24/7</p>
           </div>
         </div>
       </div>
