@@ -11,6 +11,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(1),
   ADMIN_EMAIL: z.string().email(),
   ADMIN_PASSWORD: z.string().min(6),
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)
@@ -29,4 +30,5 @@ export const env = {
   JWT_SECRET: parsed.data.JWT_SECRET,
   ADMIN_EMAIL: parsed.data.ADMIN_EMAIL,
   ADMIN_PASSWORD: parsed.data.ADMIN_PASSWORD,
+  TELEGRAM_BOT_TOKEN: parsed.data.TELEGRAM_BOT_TOKEN,
 }

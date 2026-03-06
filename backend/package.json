@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "seed": "ts-node prisma/seed.ts",
-    "link-catalog": "ts-node prisma/linkCatalogItemsToServices.ts"
+    "link-catalog": "ts-node prisma/linkCatalogItemsToServices.ts",
+    "reminders:run": "ts-node -e \"require('./src/jobs/sendBookingReminders').runBookingRemindersOnce().then(() => process.exit(0))\""
   },
   "keywords": [],
   "author": "",

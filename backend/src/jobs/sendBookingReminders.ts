@@ -1,0 +1,248 @@
+import { prisma } from "../lib/prisma"
+import { SALON_TIMEZONE } from "../config/salon"
+import { sendTelegramMessage, type InlineButton } from "../services/telegramSender"
+import { env } from "../config/env"
+
+const INTERVAL_MS =
+  env.NODE_ENV === "production" ? 2 * 60 * 1000 : 30 * 1000
+const REMINDER_10H_MS = 10 * 60 * 60 * 1000
+const REMINDER_2H_MS = 2 * 60 * 60 * 1000
+const CANCEL_CUTOFF_MS = 4 * 60 * 60 * 1000
+
+export type ReminderJobLogger = {
+  info: (bindings: object, message: string) => void
+}
+
+const consoleLogger: ReminderJobLogger = {
+  info: (bindings, message) => console.log("[reminders]", message, bindings),
+}
+
+let running = false
+
+const bookingWithDetailsSelect = {
+  id: true,
+  scheduledAt: true,
+  status: true,
+  userId: true,
+  serviceId: true,
+  masterId: true,
+  user: { select: { telegramId: true } },
+  reminder10hSentAt: true,
+  reminder2hSentAt: true,
+} as const
+
+function fmtSalon(d: Date): string {
+  return d.toLocaleString("ru-RU", {
+    timeZone: SALON_TIMEZONE,
+    dateStyle: "short",
+    timeStyle: "short",
+  })
+}
+
+function fmtDate(d: Date): string {
+  return d.toLocaleDateString("ru-RU", {
+    timeZone: SALON_TIMEZONE,
+    day: "numeric",
+    month: "long",
+  })
+}
+
+function fmtTime(d: Date): string {
+  return d.toLocaleTimeString("ru-RU", {
+    timeZone: SALON_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "ожидает подтверждения",
+  CONFIRMED: "подтверждена",
+}
+
+async function loadServiceAndMaster(serviceId: string, masterId: string) {
+  const [service, master] = await Promise.all([
+    prisma.service.findUnique({
+      where: { id: serviceId },
+      select: { name: true, durationMin: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: masterId },
+      select: { name: true },
+    }),
+  ])
+  return {
+    serviceName: service?.name ?? "—",
+    masterName: master?.name ?? "—",
+  }
+}
+
+function buildReminderText(
+  intro: string,
+  serviceName: string,
+  masterName: string,
+  scheduledAt: Date,
+  status: string,
+  outro: string,
+): string {
+  const lines = [
+    intro,
+    "",
+    `Услуга: ${serviceName}`,
+    `Мастер: ${masterName}`,
+    `Дата: ${fmtDate(scheduledAt)}`,
+    `Время: ${fmtTime(scheduledAt)}`,
+    `Статус: ${STATUS_LABELS[status] ?? status}`,
+  ]
+  if (outro) {
+    lines.push("", outro)
+  }
+  return lines.join("\n")
+}
+
+async function processReminders(log: ReminderJobLogger): Promise<void> {
+  if (running) {
+    log.info({}, "Reminder tick skipped (previous still running)")
+    return
+  }
+  running = true
+  try {
+    const now = new Date()
+    const cutoff10h = new Date(now.getTime() + REMINDER_10H_MS)
+    const cutoff2h = new Date(now.getTime() + REMINDER_2H_MS)
+
+    log.info({ now: now.toISOString(), nowSalon: fmtSalon(now) }, "Reminder tick started")
+
+    const dueBookings = await prisma.booking.findMany({
+      where: {
+        status: { in: ["PENDING", "CONFIRMED"] },
+        scheduledAt: { not: null, gt: now },
+        serviceId: { not: null },
+        masterId: { not: null },
+        user: { telegramId: { not: null } },
+        OR: [
+          { scheduledAt: { lte: cutoff10h }, reminder10hSentAt: null },
+          { scheduledAt: { lte: cutoff2h }, reminder2hSentAt: null },
+        ],
+      },
+      select: bookingWithDetailsSelect,
+    })
+
+    log.info({ count: dueBookings.length }, "Due bookings found")
+
+    if (dueBookings.length === 0) return
+
+    for (const booking of dueBookings) {
+      const telegramId = booking.user.telegramId
+      if (!telegramId || !booking.scheduledAt || !booking.serviceId || !booking.masterId) {
+        log.info({ bookingId: booking.id, reason: "missing telegramId/scheduledAt/service/master" }, "Booking skipped")
+        continue
+      }
+
+      const scheduledAt = booking.scheduledAt
+      const remainingMs = scheduledAt.getTime() - now.getTime()
+      const remainingH = +(remainingMs / 3_600_000).toFixed(2)
+
+      const needs10h = !booking.reminder10hSentAt && remainingMs <= REMINDER_10H_MS
+      const needs2h = !booking.reminder2hSentAt && remainingMs <= REMINDER_2H_MS
+
+      log.info({
+        bookingId: booking.id,
+        scheduledAt: scheduledAt.toISOString(),
+        scheduledAtSalon: fmtSalon(scheduledAt),
+        remainingH,
+        needs10h,
+        needs2h,
+        already10h: !!booking.reminder10hSentAt,
+        already2h: !!booking.reminder2hSentAt,
+      }, "Evaluating booking")
+
+      const { serviceName, masterName } = await loadServiceAndMaster(
+        booking.serviceId,
+        booking.masterId,
+      )
+
+      if (needs10h) {
+        const canCancel = remainingMs > CANCEL_CUTOFF_MS
+        const cancelKeyboard: InlineButton[][] | undefined = canCancel
+          ? [[{ text: "Отменить запись", callback_data: `cancel_bk:${booking.id}` }]]
+          : undefined
+
+        const outro = canCancel
+          ? "Если планы изменились, запись можно отменить не позднее чем за 4 часа до начала."
+          : ""
+
+        const text = buildReminderText(
+          "Напоминаем о вашей записи.",
+          serviceName,
+          masterName,
+          scheduledAt,
+          booking.status,
+          outro,
+        )
+
+        const sent = await sendTelegramMessage({
+          chat_id: telegramId,
+          text,
+          reply_markup: cancelKeyboard ? { inline_keyboard: cancelKeyboard } : undefined,
+        })
+
+        if (sent) {
+          await prisma.booking.update({
+            where: { id: booking.id },
+            data: { reminder10hSentAt: new Date() },
+          })
+          log.info({ bookingId: booking.id, type: "10h", canCancel }, "Reminder sent OK")
+        } else {
+          log.info({ bookingId: booking.id, type: "10h" }, "Reminder send FAILED")
+        }
+      }
+
+      if (needs2h) {
+        const text = buildReminderText(
+          "Напоминаем: до вашей записи осталось около 2 часов.",
+          serviceName,
+          masterName,
+          scheduledAt,
+          booking.status,
+          "Ждём вас.",
+        )
+
+        const sent = await sendTelegramMessage({ chat_id: telegramId, text })
+
+        if (sent) {
+          await prisma.booking.update({
+            where: { id: booking.id },
+            data: { reminder2hSentAt: new Date() },
+          })
+          log.info({ bookingId: booking.id, type: "2h" }, "Reminder sent OK")
+        } else {
+          log.info({ bookingId: booking.id, type: "2h" }, "Reminder send FAILED")
+        }
+      }
+    }
+  } catch (e) {
+    log.info({ err: e }, "Reminder job error")
+  } finally {
+    running = false
+  }
+}
+
+/** Run one reminder dispatch cycle immediately. Useful for local testing. */
+export async function runBookingRemindersOnce(log?: ReminderJobLogger): Promise<void> {
+  await processReminders(log ?? consoleLogger)
+}
+
+export function startBookingRemindersJob(log: ReminderJobLogger): NodeJS.Timeout | null {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    log.info({}, "TELEGRAM_BOT_TOKEN not set, booking reminders disabled")
+    return null
+  }
+  log.info({ intervalS: INTERVAL_MS / 1000 }, `Booking reminders job started (interval: ${INTERVAL_MS / 1000}s)`)
+  return setInterval(() => {
+    processReminders(log).catch((err) => {
+      log.info({ err }, "Reminder job unhandled error")
+    })
+  }, INTERVAL_MS)
+}

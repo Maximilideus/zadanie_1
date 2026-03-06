@@ -234,6 +234,9 @@ model Booking {
   completedAt DateTime?
   expiresAt   DateTime?
 
+  reminder10hSentAt DateTime?
+  reminder2hSentAt  DateTime?
+
   @@index([userId])
   @@index([status])
   @@index([scheduledAt])
