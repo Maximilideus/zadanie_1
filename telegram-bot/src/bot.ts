@@ -1,6 +1,7 @@
 import "dotenv/config"
 import { Bot } from "grammy"
-import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, ensureActiveBooking } from "./api/backend.client.js"
+import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, cancelBookingById } from "./api/backend.client.js"
+import { InlineKeyboard } from "grammy"
 import { formatServiceDisplayName, formatBookingDate, formatBookingTime, formatMasterDisplayName } from "./services/formatters.js"
 import { stateRouter } from "./router/state.router.js"
 import { parseCatalogPayload, resolveCatalogDeepLink, formatCatalogIntro } from "./services/deeplink.js"
@@ -13,6 +14,11 @@ import {
   onTimeSlotChosen,
   onConfirmBooking,
   onTimeBack,
+  onEditTime,
+  onEditDate,
+  onEditMaster,
+  onChooseAnotherService,
+  onCancelFlow,
   getBookingSession,
   clearBookingSession,
   startWizardWithService,
@@ -74,11 +80,12 @@ bot.command("start", async (ctx) => {
         return
       }
 
-      await ensureActiveBooking(telegramId)
       try {
         await updateTelegramState(telegramId, "BOOKING_FLOW")
       } catch {
-        // already in BOOKING_FLOW — ok
+        // Best-effort: IDLE->BOOKING_FLOW is not a valid backend transition,
+        // so this only succeeds from CONSULTING. The wizard runs via in-memory
+        // session regardless; User.state is coarse/secondary.
       }
 
       const introText = formatCatalogIntro(result.item)
@@ -89,6 +96,11 @@ bot.command("start", async (ctx) => {
         formatServiceDisplayName(service),
         service.durationMin,
         introText,
+        {
+          price: result.item.price ?? undefined,
+          catalogTitle: result.item.titleRu,
+          category: result.item.category,
+        },
       )
       return
     }
@@ -156,7 +168,6 @@ bot.command("book", async (ctx) => {
 
   try {
     const { state } = await telegramAuth(telegramId)
-    await ensureActiveBooking(telegramId)
     if (state === "CONSULTING") {
       try {
         await updateTelegramState(telegramId, "BOOKING_FLOW")
@@ -175,6 +186,30 @@ bot.command("book", async (ctx) => {
   }
 })
 
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: "ожидает подтверждения",
+  CONFIRMED: "подтверждена",
+}
+
+function buildBookingListMessage(bookings: Awaited<ReturnType<typeof getUpcomingBookings>>) {
+  const lines = ["Ваши ближайшие записи:", ""]
+  bookings.forEach((b, i) => {
+    const serviceDisplay = formatServiceDisplayName(b.service)
+    const masterDisplay = formatMasterDisplayName(b.masterName)
+    lines.push(`${i + 1}) ${serviceDisplay}`)
+    lines.push(`Мастер: ${masterDisplay}`)
+    lines.push(`Дата: ${formatBookingDate(b.scheduledAt)}`)
+    lines.push(`Время: ${formatBookingTime(b.scheduledAt)}`)
+    lines.push(`Статус: ${STATUS_LABELS[b.status] ?? b.status}`)
+    lines.push("")
+  })
+  const keyboard = new InlineKeyboard()
+  bookings.forEach((b, i) => {
+    keyboard.text(`❌ Отменить запись ${i + 1}`, `cancel_bk:${b.id}`).row()
+  })
+  return { text: lines.join("\n").trim(), keyboard }
+}
+
 bot.command("my_bookings", async (ctx) => {
   const from = ctx.from
   if (!from) return
@@ -189,17 +224,8 @@ bot.command("my_bookings", async (ctx) => {
       return
     }
 
-    const lines = ["Ваши ближайшие записи:", ""]
-    bookings.forEach((b, i) => {
-      const serviceDisplay = formatServiceDisplayName(b.service)
-      const masterDisplay = formatMasterDisplayName(b.masterName)
-      lines.push(`${i + 1}) ${serviceDisplay}`)
-      lines.push(`Мастер: ${masterDisplay}`)
-      lines.push(`Дата: ${formatBookingDate(b.scheduledAt)}`)
-      lines.push(`Время: ${formatBookingTime(b.scheduledAt)}`)
-      lines.push("")
-    })
-    await ctx.reply(lines.join("\n").trim())
+    const { text, keyboard } = buildBookingListMessage(bookings)
+    await ctx.reply(text, { reply_markup: keyboard })
   } catch {
     await ctx.reply(UNAVAILABLE)
   }
@@ -292,6 +318,140 @@ bot.callbackQuery("time_back", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
     console.error("[wizard] time_back callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("edit_time", async (ctx) => {
+  try {
+    await onEditTime(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] edit_time callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("edit_date", async (ctx) => {
+  try {
+    await onEditDate(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] edit_date callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("edit_master", async (ctx) => {
+  try {
+    await onEditMaster(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] edit_master callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("another_service", async (ctx) => {
+  try {
+    await onChooseAnotherService(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] another_service callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("cancel_flow", async (ctx) => {
+  try {
+    await onCancelFlow(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] cancel_flow callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^cancel_bk:(.+)$/, async (ctx) => {
+  try {
+    const bookingId = ctx.match[1]
+    const telegramId = String(ctx.from.id)
+    const bookings = await getUpcomingBookings(telegramId)
+    const booking = bookings.find((b) => b.id === bookingId)
+    if (!booking) {
+      await ctx.answerCallbackQuery({ text: "Запись не найдена.", show_alert: true })
+      return
+    }
+    const serviceDisplay = formatServiceDisplayName(booking.service)
+    const masterDisplay = formatMasterDisplayName(booking.masterName)
+    const text =
+      "Вы действительно хотите отменить запись?\n\n" +
+      `Услуга: ${serviceDisplay}\n` +
+      `Мастер: ${masterDisplay}\n` +
+      `Дата: ${formatBookingDate(booking.scheduledAt)}\n` +
+      `Время: ${formatBookingTime(booking.scheduledAt)}`
+    const keyboard = new InlineKeyboard()
+      .text("Да, отменить", `cancel_bk_yes:${bookingId}`)
+      .text("Назад", "cancel_bk_no")
+    await ctx.editMessageText(text, { reply_markup: keyboard })
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[my_bookings] cancel_bk callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^cancel_bk_yes:(.+)$/, async (ctx) => {
+  try {
+    const bookingId = ctx.match[1]
+    const telegramId = String(ctx.from.id)
+    try {
+      await cancelBookingById(telegramId, bookingId)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ""
+      if (msg.includes("CANCELLATION_TOO_LATE")) {
+        await ctx.editMessageText(
+          "Отменить запись можно не позднее чем за 4 часа до начала.\n\n" +
+          "Используйте /my_bookings для просмотра записей."
+        )
+        await ctx.answerCallbackQuery().catch(() => {})
+        return
+      }
+      if (msg.includes("BOOKING_NOT_CANCELLABLE") || msg.includes("INVALID_BOOKING_TRANSITION")) {
+        await ctx.editMessageText(
+          "Эту запись нельзя отменить.\n\n" +
+          "Используйте /my_bookings для просмотра записей."
+        )
+        await ctx.answerCallbackQuery().catch(() => {})
+        return
+      }
+      throw e
+    }
+    await ctx.editMessageText(
+      "✅ Запись отменена.\n\nИспользуйте /my_bookings для просмотра записей."
+    )
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[my_bookings] cancel_bk_yes callback error", e)
+    await ctx.editMessageText("Не удалось отменить запись. Попробуйте позже.").catch(() => {})
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("cancel_bk_no", async (ctx) => {
+  try {
+    const telegramId = String(ctx.from.id)
+    const bookings = await getUpcomingBookings(telegramId)
+    if (bookings.length === 0) {
+      await ctx.editMessageText("У вас пока нет записей.")
+      await ctx.answerCallbackQuery().catch(() => {})
+      return
+    }
+    const { text, keyboard } = buildBookingListMessage(bookings)
+    await ctx.editMessageText(text, { reply_markup: keyboard })
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[my_bookings] cancel_bk_no callback error", e)
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
   }
 })

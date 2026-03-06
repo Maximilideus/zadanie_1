@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/bot.ts",
-    "start": "node --experimental-vm-modules node_modules/tsx/dist/cli.mjs src/bot.ts"
+    "start": "node --experimental-vm-modules node_modules/tsx/dist/cli.mjs src/bot.ts",
+    "dev": "tsx src/bot.ts",
+  "build": "tsc",
+  "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
@@ -16,4 +19,5 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
+  
 }

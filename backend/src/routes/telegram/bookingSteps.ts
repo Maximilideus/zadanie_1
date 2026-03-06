@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest } from "fastify"
 import { BookingService } from "../../services/BookingService"
+import { cancelBookingByTelegramId } from "../../modules/booking/booking.service"
 
 const serviceBodySchema = {
   type: "object",
@@ -31,9 +32,20 @@ const timeBodySchema = {
   additionalProperties: false,
 } as const
 
+const cancelBodySchema = {
+  type: "object",
+  required: ["telegramId", "bookingId"],
+  properties: {
+    telegramId: { type: "string", minLength: 1 },
+    bookingId: { type: "string", minLength: 1 },
+  },
+  additionalProperties: false,
+} as const
+
 type ServiceBody = { telegramId: string; serviceId: string }
 type MasterBody = { telegramId: string; masterId: string }
 type TimeBody = { telegramId: string; scheduledAt: string }
+type CancelBody = { telegramId: string; bookingId: string }
 
 async function setServiceHandler(request: FastifyRequest<{ Body: ServiceBody }>) {
   const { telegramId, serviceId } = request.body
@@ -62,6 +74,13 @@ async function setTimeHandler(request: FastifyRequest<{ Body: TimeBody }>) {
   return booking
 }
 
+async function cancelBookingHandler(request: FastifyRequest<{ Body: CancelBody }>) {
+  const { telegramId, bookingId } = request.body
+  const booking = await cancelBookingByTelegramId(telegramId, bookingId)
+  request.log.info({ bookingId, telegramId }, "Booking cancelled by telegramId")
+  return booking
+}
+
 export async function bookingStepsRoutes(app: FastifyInstance) {
   app.post("/bookings/service", {
     schema: {
@@ -83,5 +102,12 @@ export async function bookingStepsRoutes(app: FastifyInstance) {
       response: { 200: { type: "object", additionalProperties: true } },
     },
     handler: setTimeHandler,
+  })
+  app.post("/bookings/cancel", {
+    schema: {
+      body: cancelBodySchema,
+      response: { 200: { type: "object", additionalProperties: true } },
+    },
+    handler: cancelBookingHandler,
   })
 }

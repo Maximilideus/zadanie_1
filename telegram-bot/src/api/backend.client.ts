@@ -78,6 +78,7 @@ export async function getUserBookings(
 
 export interface UpcomingBookingItem {
   id: string
+  status: string
   scheduledAt: string
   service: { name: string; durationMin?: number }
   masterName: string
@@ -261,6 +262,19 @@ export async function setBookingTime(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ telegramId, scheduledAt }),
+  })
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as BookingUpdateResponse
+}
+
+export async function cancelBookingById(
+  telegramId: string,
+  bookingId: string,
+): Promise<BookingUpdateResponse> {
+  const res = await fetch(`${BACKEND_URL}/telegram/bookings/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId, bookingId }),
   })
   if (!res.ok) return parseError(res)
   return (await res.json()) as BookingUpdateResponse

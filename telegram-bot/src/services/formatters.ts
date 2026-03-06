@@ -1,4 +1,4 @@
-const SALON_TIMEZONE = "Europe/Berlin"
+import { SALON_TIMEZONE } from "../config/salon.js"
 
 export type ServiceLike = { name: string; durationMin?: number }
 export type MasterLike = { name: string }

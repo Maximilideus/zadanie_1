@@ -173,6 +173,22 @@ app.setErrorHandler((error, request, reply) => {
     })
   }
 
+  if (err.message === "CANCELLATION_TOO_LATE") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "CANCELLATION_TOO_LATE",
+    })
+  }
+
+  if (err.message === "BOOKING_NOT_CANCELLABLE") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "BOOKING_NOT_CANCELLABLE",
+    })
+  }
+
   if (err.message === "INVALID_SCHEDULED_AT") {
     return reply.status(400).send({
       statusCode: 400,

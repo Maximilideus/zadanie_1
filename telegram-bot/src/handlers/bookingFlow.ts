@@ -8,6 +8,7 @@ import {
   setBookingMaster,
   setBookingTime,
   ensureActiveBooking,
+  updateTelegramState,
   type ServiceItem,
 } from "../api/backend.client.js"
 import {
@@ -18,6 +19,8 @@ import {
   formatBookingSummary,
   formatMasterDisplayName,
 } from "../services/formatters.js"
+import type { ConfirmState } from "../session/bookingFlowSession.js"
+import { SALON_TIMEZONE } from "../config/salon.js"
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 const MAX_SLOT_BUTTONS = 24
@@ -27,9 +30,6 @@ const MASTER_BUTTONS_PER_ROW = 2
 const DAYS_BUTTONS_PER_ROW = 2
 const DATE_DAYS_SHOWN = 14
 const DATE_RANGE_DAYS = 60
-const SALON_TIMEZONE = "Europe/Berlin"
-
-const NO_PENDING_MESSAGE = "No active PENDING booking"
 
 function todayStrInSalonTz(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: SALON_TIMEZONE })
@@ -40,15 +40,34 @@ function dateStrInSalonTz(date: Date): string {
 }
 
 export interface BookingSession {
+  category?: string
   serviceId?: string
   masterId?: string
   dateStr?: string
   timeStr?: string
+  scheduledAtIso?: string
   serviceName?: string
   masterName?: string
   durationMin?: number
+  price?: number
+  catalogTitle?: string
   wizardMessageId?: { chatId: number; messageId: number }
   awaitingDate?: boolean
+  confirm?: ConfirmState
+}
+
+const CATEGORY_SERVICE_PREFIX: Record<string, string> = {
+  LASER: "Laser",
+  WAX: "Waxing",
+  ELECTRO: "Electro",
+  MASSAGE: "Massage",
+}
+
+function filterServicesByCategory(services: ServiceItem[], category?: string): ServiceItem[] {
+  if (!category) return services
+  const prefix = CATEGORY_SERVICE_PREFIX[category]
+  if (!prefix) return services
+  return services.filter((s) => s.name.startsWith(prefix))
 }
 
 const sessionStore = new Map<number, BookingSession>()
@@ -69,6 +88,20 @@ export function clearBookingSession(telegramId: number): void {
   sessionStore.delete(telegramId)
 }
 
+const EMPTY_CONFIRM_STATE: ConfirmState = {
+  inProgress: false,
+  idempotencyKey: null,
+  lastAttemptAt: null,
+}
+
+function getConfirmState(session: BookingSession): ConfirmState {
+  return session.confirm ?? EMPTY_CONFIRM_STATE
+}
+
+function isSessionReadyForConfirm(session: BookingSession): boolean {
+  return !!(session.serviceId && session.masterId && session.dateStr && session.timeStr)
+}
+
 function buildSummary(session: BookingSession): string {
   const s = session.serviceName ?? "—"
   const m = session.masterName ?? "—"
@@ -80,25 +113,6 @@ function buildSummary(session: BookingSession): string {
     "Дата: " + d,
     "Время: " + t,
   ].join("\n")
-}
-
-function isNoPendingError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : ""
-  return msg.includes(NO_PENDING_MESSAGE) || msg.includes("NO_PENDING")
-}
-
-async function ensureBookingAndRetry<T>(
-  telegramId: string,
-  fn: () => Promise<T>
-): Promise<T> {
-  try {
-    return await fn()
-  } catch (e) {
-    if (!isNoPendingError(e)) throw e
-    console.log("[wizard] 409 no active booking, ensuring booking and retrying")
-    await ensureActiveBooking(telegramId)
-    return fn()
-  }
 }
 
 function serviceButtonLabel(s: ServiceItem): string {
@@ -195,30 +209,21 @@ export async function startWizardWithService(
   serviceName: string,
   durationMin: number | undefined,
   introText: string,
+  extra?: { price?: number; catalogTitle?: string; category?: string },
 ): Promise<void> {
   const from = ctx.from
   if (!from) return
-  const telegramId = String(from.id)
 
-  await ensureActiveBooking(telegramId)
   clearBookingSession(from.id)
 
-  try {
-    await ensureBookingAndRetry(telegramId, () =>
-      setBookingService(telegramId, serviceId)
-    )
-  } catch {
-    const session = getBookingSession(from.id)
-    await editWizardMessage(
-      ctx,
-      session,
-      "Не удалось начать запись. Попробуйте /book",
-      new InlineKeyboard()
-    )
-    return
-  }
-
-  setBookingSession(from.id, { serviceId, serviceName, durationMin })
+  setBookingSession(from.id, {
+    category: extra?.category ?? undefined,
+    serviceId,
+    serviceName,
+    durationMin,
+    price: extra?.price ?? undefined,
+    catalogTitle: extra?.catalogTitle ?? undefined,
+  })
 
   const masters = await getMasters(serviceId)
   if (masters.length === 0) {
@@ -246,9 +251,7 @@ export async function startWizardWithService(
 export async function startWizard(ctx: Context): Promise<void> {
   const from = ctx.from
   if (!from) return
-  const telegramId = String(from.id)
 
-  await ensureActiveBooking(telegramId)
   const session = getBookingSession(from.id)
   const summary = buildSummary(session)
   const services = await getServices()
@@ -271,12 +274,13 @@ export async function startWizard(ctx: Context): Promise<void> {
 }
 
 /** Called from booking handler: ensure we have a wizard message and show step A. */
-export async function showServiceList(ctx: Context): Promise<void> {
+export async function showServiceList(ctx: Context, category?: string): Promise<void> {
   const from = ctx.from
   if (!from) return
   const session = getBookingSession(from.id)
   const summary = buildSummary(session)
-  const services = await getServices()
+  const allServices = await getServices()
+  const services = filterServicesByCategory(allServices, category)
   if (services.length === 0) {
     await editWizardMessage(
       ctx,
@@ -297,21 +301,13 @@ export async function showServiceList(ctx: Context): Promise<void> {
 export async function onServiceChosen(ctx: Context, serviceId: string): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
-  const tid = String(telegramId)
   const session = getBookingSession(telegramId)
 
   try {
-    let serviceName = ""
-    try {
-      await ensureBookingAndRetry(tid, () => setBookingService(tid, serviceId))
-      const services = await getServices()
-      const s = services.find((x) => x.id === serviceId)
-      serviceName = s ? formatServiceDisplayName(s) : "—"
-      setBookingSession(telegramId, { serviceId, serviceName, durationMin: s?.durationMin })
-    } catch (e) {
-      await handleBackendError(ctx, e, session)
-      return
-    }
+    const services = await getServices()
+    const s = services.find((x) => x.id === serviceId)
+    const serviceName = s ? formatServiceDisplayName(s) : "—"
+    setBookingSession(telegramId, { serviceId, serviceName, durationMin: s?.durationMin })
 
     console.log("[wizard] step: service chosen", serviceId)
 
@@ -338,7 +334,6 @@ export async function onServiceChosen(ctx: Context, serviceId: string): Promise<
 export async function onMasterChosen(ctx: Context, masterId: string): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
-  const tid = String(telegramId)
   const session = getBookingSession(telegramId)
   const serviceId = session.serviceId
   if (!serviceId) {
@@ -347,29 +342,6 @@ export async function onMasterChosen(ctx: Context, masterId: string): Promise<vo
   }
 
   try {
-    try {
-      await ensureBookingAndRetry(tid, () => setBookingMaster(tid, masterId))
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : ""
-      if (msg.includes("Master cannot perform") || msg.includes("MASTER_CANNOT")) {
-        await ctx.answerCallbackQuery({
-          text: "Этот мастер не выполняет выбранную услугу.",
-          show_alert: true,
-        })
-        const masters = await getMasters(serviceId)
-        const keyboard = new InlineKeyboard()
-        for (let i = 0; i < masters.length; i++) {
-          keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
-          if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
-        }
-        const text = buildSummary(session) + "\n\nВыберите мастера:"
-        await editWizardMessage(ctx, session, text, keyboard)
-        return
-      }
-      await handleBackendError(ctx, e, session)
-      return
-    }
-
     const masters = await getMasters(serviceId)
     const master = masters.find((m) => m.id === masterId)
     setBookingSession(telegramId, {
@@ -534,65 +506,272 @@ export async function onDateEntered(
   await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
 }
 
-/** Show confirmation screen; booking is created only after user confirms. */
+/** After time slot selected: validate session, then show confirm screen. */
 export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
   const session = getBookingSession(telegramId)
-  const { serviceName, masterName, dateStr, durationMin } = session
-  if (!dateStr) return
+
+  if (!session.serviceId || !session.masterId || !session.dateStr) {
+    await ctx.answerCallbackQuery({
+      text: "Данные записи неполны. Начните заново: /book",
+      show_alert: true,
+    }).catch(() => {})
+    return
+  }
 
   try {
     const timeStr = formatBookingTime(scheduledAtIso)
-    setBookingSession(telegramId, { timeStr })
-    const duration = durationMin != null ? `${durationMin} мин` : "—"
-    const confirmText =
-      "Подтвердите запись:\n\n" +
-      `Услуга: ${serviceName ?? "—"}\n` +
-      `Мастер: ${masterName ?? "—"}\n` +
-      `Дата: ${formatBookingDate(dateStr + "T12:00:00Z")}\n` +
-      `Время: ${timeStr}\n` +
-      `Длительность: ${duration}\n\n` +
-      "Если нужно изменить дату или время, нажмите «Назад»."
-    const keyboard = new InlineKeyboard()
-      .text("Подтвердить запись", `confirm:${scheduledAtIso}`)
-      .row()
-      .text("Назад", "time_back")
-    await editWizardMessage(ctx, getBookingSession(telegramId), confirmText, keyboard)
+    setBookingSession(telegramId, {
+      timeStr,
+      scheduledAtIso,
+      confirm: { ...EMPTY_CONFIRM_STATE },
+    })
+    await showConfirmScreen(ctx, telegramId, scheduledAtIso)
   } catch (e) {
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
     await handleBackendError(ctx, e, session)
   }
 }
 
-/** User confirmed: create booking (set time on backend) and show success. */
+function buildConfirmText(session: BookingSession): string {
+  const service = session.serviceName ?? "—"
+  const master = session.masterName ?? "—"
+  const date = session.dateStr
+    ? formatBookingDate(session.dateStr + "T12:00:00Z")
+    : "—"
+  const time = session.timeStr ?? "—"
+
+  const lines = ["Проверьте запись\n", `Услуга: ${service}`]
+  if (session.catalogTitle) lines.push(session.catalogTitle)
+  lines.push("")
+  lines.push(`Мастер: ${master}`)
+  lines.push(`Дата: ${date}`)
+  lines.push(`Время: ${time}`)
+  if (session.durationMin != null) lines.push(`Длительность: ${session.durationMin} мин`)
+  if (session.price != null) lines.push(`Цена: ${session.price} ₽`)
+  lines.push("")
+  lines.push("Запись будет создана со статусом ожидания подтверждения.")
+  return lines.join("\n")
+}
+
+function buildConfirmKeyboard(scheduledAtIso: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Подтвердить запись", `confirm:${scheduledAtIso}`)
+    .row()
+    .text("🕒 Изменить время", "edit_time")
+    .text("📅 Изменить дату", "edit_date")
+    .row()
+    .text("👩 Изменить мастера", "edit_master")
+    .text("🔄 Выбрать другую услугу", "another_service")
+    .row()
+    .text("❌ Отмена", "cancel_flow")
+}
+
+async function showConfirmScreen(ctx: Context, telegramId: number, scheduledAtIso: string): Promise<void> {
+  const session = getBookingSession(telegramId)
+  const text = buildConfirmText(session)
+  const keyboard = buildConfirmKeyboard(scheduledAtIso)
+  await editWizardMessage(ctx, session, text, keyboard)
+}
+
+/** Re-check availability, then create booking. Protects against duplicates via ConfirmState. */
 export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
   const tid = String(telegramId)
   const session = getBookingSession(telegramId)
+  const confirmState = getConfirmState(session)
+
+  if (confirmState.inProgress) {
+    await ctx.answerCallbackQuery({ text: "Подтверждение уже обрабатывается.", show_alert: false }).catch(() => {})
+    return
+  }
+
+  if (!isSessionReadyForConfirm(session)) {
+    await ctx.answerCallbackQuery({ text: "Данные записи неполны. Начните заново: /book", show_alert: true }).catch(() => {})
+    return
+  }
+
+  const { serviceId, masterId, dateStr } = session as Required<Pick<BookingSession, "serviceId" | "masterId" | "dateStr">>
+
+  setBookingSession(telegramId, {
+    confirm: {
+      inProgress: true,
+      idempotencyKey: scheduledAtIso,
+      lastAttemptAt: new Date().toISOString(),
+    },
+  })
 
   try {
-    await ensureBookingAndRetry(tid, () => setBookingTime(tid, scheduledAtIso))
+    const { slots } = await getAvailability(serviceId, masterId, dateStr)
+    if (!slots.includes(scheduledAtIso)) {
+      setBookingSession(telegramId, {
+        timeStr: undefined,
+        scheduledAtIso: undefined,
+        confirm: { ...EMPTY_CONFIRM_STATE },
+      })
+      await ctx.answerCallbackQuery({
+        text: "Это время уже стало недоступно.",
+        show_alert: true,
+      }).catch(() => {})
+      await showTimeSelection(ctx, telegramId, serviceId, masterId, dateStr,
+        "Выбранное время уже недоступно. Пожалуйста, выберите другое время:")
+      return
+    }
+
+    await ensureActiveBooking(tid)
+    await setBookingService(tid, serviceId)
+    await setBookingMaster(tid, masterId)
+    await setBookingTime(tid, scheduledAtIso)
   } catch (e) {
+    console.error("[wizard] confirm booking error", e)
+    setBookingSession(telegramId, {
+      confirm: { ...getConfirmState(getBookingSession(telegramId)), inProgress: false },
+    })
     await handleBackendError(ctx, e, session)
     return
   }
+
   const summary = formatBookingSummary({
     serviceDisplayName: session.serviceName ?? "—",
     masterName: session.masterName ?? "—",
     scheduledAt: scheduledAtIso,
   })
   clearBookingSession(telegramId)
-  console.log("[wizard] step: booking confirmed and created")
+  console.log("[wizard] booking confirmed and created")
   await ctx.editMessageText(
     "✅ Заявка на запись создана.\n\n" +
       `Услуга: ${summary.service}\n` +
       `Мастер: ${summary.master}\n` +
       `Дата: ${summary.date}\n` +
       `Время: ${summary.time}\n\n` +
+      "Статус: ожидает подтверждения.\n\n" +
       "Проверить записи: /my_bookings"
   )
+}
+
+/** Show time slot selection for a given date. Used after confirm-time-unavailable. */
+async function showTimeSelection(
+  ctx: Context,
+  telegramId: number,
+  serviceId: string,
+  masterId: string,
+  dateStr: string,
+  headerMessage: string,
+): Promise<void> {
+  const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
+  if (slots.length === 0) {
+    const days = getNext14Days()
+    const keyboard = new InlineKeyboard()
+    for (let i = 0; i < days.length; i++) {
+      keyboard.text(days[i].label, `day:${days[i].date}`)
+      if ((i + 1) % DAYS_BUTTONS_PER_ROW === 0) keyboard.row()
+    }
+    keyboard.row().text("📅 Ввести дату", "manual_date")
+    const text = buildSummary(getBookingSession(telegramId)) +
+      "\n\nНа эту дату нет свободных слотов. Выберите другую дату:"
+    await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+    return
+  }
+  const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < toShow.length; i++) {
+    keyboard.text(slotLabel(toShow[i], timezone), `t:${toShow[i]}`)
+    if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
+  }
+  const text = buildSummary(getBookingSession(telegramId)) + `\n\n${headerMessage}`
+  await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+}
+
+// ── Confirm navigation handlers ──────────────────────────────────────
+
+export async function onEditTime(ctx: Context): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  const session = getBookingSession(telegramId)
+  const { serviceId, masterId, dateStr } = session
+  if (!serviceId || !masterId || !dateStr) return
+  setBookingSession(telegramId, {
+    timeStr: undefined,
+    scheduledAtIso: undefined,
+    confirm: { ...EMPTY_CONFIRM_STATE },
+  })
+  await showTimeSelection(ctx, telegramId, serviceId, masterId, dateStr, "Выберите время:")
+}
+
+export async function onEditDate(ctx: Context): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  setBookingSession(telegramId, {
+    timeStr: undefined,
+    scheduledAtIso: undefined,
+    dateStr: undefined,
+    confirm: { ...EMPTY_CONFIRM_STATE },
+  })
+  const days = getNext14Days()
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < days.length; i++) {
+    keyboard.text(days[i].label, `day:${days[i].date}`)
+    if ((i + 1) % DAYS_BUTTONS_PER_ROW === 0) keyboard.row()
+  }
+  keyboard.row().text("📅 Ввести дату", "manual_date")
+  const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите дату:"
+  await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+}
+
+export async function onEditMaster(ctx: Context): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  const session = getBookingSession(telegramId)
+  const { serviceId } = session
+  if (!serviceId) return
+  setBookingSession(telegramId, {
+    masterId: undefined, masterName: undefined,
+    dateStr: undefined, timeStr: undefined,
+    scheduledAtIso: undefined,
+    confirm: { ...EMPTY_CONFIRM_STATE },
+  })
+  const masters = await getMasters(serviceId)
+  if (masters.length === 0) {
+    const text = buildSummary(getBookingSession(telegramId)) + "\n\nНет доступных мастеров."
+    await editWizardMessage(ctx, getBookingSession(telegramId), text, new InlineKeyboard())
+    return
+  }
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < masters.length; i++) {
+    keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
+    if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
+  }
+  const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите мастера:"
+  await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+}
+
+export async function onChooseAnotherService(ctx: Context): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  const { category } = getBookingSession(telegramId)
+  setBookingSession(telegramId, {
+    serviceId: undefined, serviceName: undefined, durationMin: undefined,
+    price: undefined, catalogTitle: undefined,
+    masterId: undefined, masterName: undefined,
+    dateStr: undefined, timeStr: undefined,
+    scheduledAtIso: undefined,
+    confirm: { ...EMPTY_CONFIRM_STATE },
+  })
+  await showServiceList(ctx, category)
+}
+
+export async function onCancelFlow(ctx: Context): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  clearBookingSession(telegramId)
+  try {
+    await updateTelegramState(String(telegramId), "IDLE")
+  } catch {
+    // Best-effort: state may already be IDLE (deep link flow never changes it).
+  }
+  await ctx.editMessageText("Запись отменена. Вы можете начать заново:\n/book — запись\n/consult — консультация")
 }
 
 /** User pressed Back: return to DATE selection (not time). */

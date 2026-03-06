@@ -2,6 +2,7 @@ import { Prisma, type BookingStatus as PrismaBookingStatus } from "@prisma/clien
 import { prisma } from "../../lib/prisma"
 import type { BookingStatus, BookingAction } from "./booking.status.machine"
 import { transition } from "./booking.status.machine"
+import { SALON_TIMEZONE } from "../../config/salon"
 
 const SCHEMA_SYNC_MESSAGE =
   "Database schema is not synchronized. Please run prisma migrate."
@@ -118,6 +119,67 @@ export async function cancelBooking(userId: string, bookingId: string) {
   return executeBookingAction(userId, bookingId, "CANCEL")
 }
 
+const CANCEL_MIN_HOURS = 4
+
+export async function cancelBookingByTelegramId(telegramId: string, bookingId: string) {
+  const user = await prisma.user.findUnique({
+    where: { telegramId },
+    select: { id: true },
+  })
+  if (!user) throw new Error("NOT_FOUND")
+
+  let booking: {
+    id: string
+    userId: string
+    status: string
+    scheduledAt: Date | null
+  } | null = null
+  try {
+    booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, userId: true, status: true, scheduledAt: true },
+    })
+  } catch (e) {
+    handlePrismaError(e)
+  }
+  if (!booking) throw new Error("NOT_FOUND")
+  if (booking.userId !== user.id) throw new Error("NOT_FOUND")
+
+  if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
+    throw new Error("BOOKING_NOT_CANCELLABLE")
+  }
+
+  if (!booking.scheduledAt) {
+    throw new Error("BOOKING_NOT_CANCELLABLE")
+  }
+
+  const now = new Date()
+  const remainingMs = booking.scheduledAt.getTime() - now.getTime()
+  const cutoffMs = CANCEL_MIN_HOURS * 60 * 60 * 1000
+  const allowed = remainingMs > cutoffMs
+
+  const fmtLocal = (d: Date) =>
+    d.toLocaleString("ru-RU", { timeZone: SALON_TIMEZONE, dateStyle: "short", timeStyle: "medium" })
+
+  // TODO: remove after verifying cancellation cutoff in production
+  console.log("[cancel-check]", {
+    scheduledAtUTC: booking.scheduledAt.toISOString(),
+    scheduledAtSalon: fmtLocal(booking.scheduledAt),
+    nowUTC: now.toISOString(),
+    nowSalon: fmtLocal(now),
+    remainingMs,
+    remainingHours: +(remainingMs / 3_600_000).toFixed(2),
+    cutoffMs,
+    decision: allowed ? "ALLOW" : "DENY",
+  })
+
+  if (!allowed) {
+    throw new Error("CANCELLATION_TOO_LATE")
+  }
+
+  return cancelBooking(user.id, bookingId)
+}
+
 export async function updateBookingStatus(bookingId: string, newStatus: BookingStatus) {
   let booking: { id: string; status: string } | null = null
   try {
@@ -183,7 +245,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
       serviceId: { not: null },
       masterId: { not: null },
     },
-    select: { id: true, scheduledAt: true, serviceId: true, masterId: true },
+    select: { id: true, status: true, scheduledAt: true, serviceId: true, masterId: true },
     orderBy: { scheduledAt: "asc" },
     take: 10,
   })
@@ -206,6 +268,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
   const masterByName = Object.fromEntries(masters.map((m) => [m.id, m.name]))
   return bookings.map((b) => ({
     id: b.id,
+    status: b.status,
     scheduledAt: b.scheduledAt,
     service: b.serviceId
       ? serviceById[b.serviceId] ?? { name: "—", durationMin: undefined }
