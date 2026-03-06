@@ -1,5 +1,7 @@
 import { z } from "zod"
-import { USER_STATES } from "../user/state.service"
+
+export const TELEGRAM_STATE_VALUES = ["IDLE", "CONSULTING", "BOOKING_FLOW"] as const
+export type TelegramState = (typeof TELEGRAM_STATE_VALUES)[number]
 
 export const telegramAuthSchema = z.object({
   telegramId: z.string().min(1),
@@ -8,5 +10,5 @@ export const telegramAuthSchema = z.object({
 
 export const telegramStateSchema = z.object({
   telegramId: z.string().min(1),
-  state: z.enum(USER_STATES),
+  state: z.enum(TELEGRAM_STATE_VALUES),
 })

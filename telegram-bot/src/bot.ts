@@ -1,12 +1,16 @@
 import "dotenv/config"
 import { Bot } from "grammy"
-import { telegramAuth, getUserByTelegramId, updateTelegramState, getUserBookings, createTelegramBooking } from "./api/backend.client.js"
+import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, ensureActiveBooking } from "./api/backend.client.js"
 import { stateRouter } from "./router/state.router.js"
 import {
   onServiceChosen,
   onMasterChosen,
+  onDayChosen,
+  onManualDateChosen,
   onDateEntered,
   onTimeSlotChosen,
+  onConfirmBooking,
+  onTimeBack,
   getBookingSession,
   clearBookingSession,
   isDateString,
@@ -20,6 +24,20 @@ if (!token) {
 }
 
 const bot = new Bot(token)
+
+bot.catch(async (err) => {
+  console.error("[bot.catch]", err.error)
+  try {
+    if (err.ctx.callbackQuery) {
+      await err.ctx.answerCallbackQuery({
+        text: "Ошибка. Попробуйте ещё раз.",
+        show_alert: false,
+      })
+    }
+  } catch {
+    // ignore
+  }
+})
 
 bot.command("start", async (ctx) => {
   const from = ctx.from
@@ -92,25 +110,21 @@ bot.command("book", async (ctx) => {
 
   try {
     const { state } = await telegramAuth(telegramId)
-
-    if (state !== "CONSULTING") {
-      await ctx.reply("Сначала необходимо завершить консультацию.")
-      return
-    }
-
-    try {
-      await createTelegramBooking(telegramId)
-    } catch (e) {
-      if (e instanceof Error && e.message === "ACTIVE_BOOKING_EXISTS") {
-        await ctx.reply("У вас уже есть активная запись. Используйте /my_bookings.")
+    await ensureActiveBooking(telegramId)
+    if (state === "CONSULTING") {
+      try {
         await updateTelegramState(telegramId, "BOOKING_FLOW")
-        await stateRouter(ctx, "BOOKING_FLOW")
-        return
+      } catch (e) {
+        const err = e as Error & { statusCode?: number }
+        if (err.statusCode === 409) {
+          await ctx.reply("Сейчас нельзя перейти к записи. Используйте /cancel и попробуйте снова.")
+          return
+        }
+        throw e
       }
-      throw e
     }
     await stateRouter(ctx, "BOOKING_FLOW")
-  } catch {
+  } catch (e) {
     await ctx.reply(UNAVAILABLE)
   }
 })
@@ -122,26 +136,31 @@ bot.command("my_bookings", async (ctx) => {
   const telegramId = String(from.id)
 
   try {
-    const bookings = await getUserBookings(telegramId)
+    const bookings = await getUpcomingBookings(telegramId)
 
     if (bookings.length === 0) {
       await ctx.reply("У вас пока нет записей.")
       return
     }
 
-    const lines = ["Ваши записи:"]
+    const lines = ["Ваши ближайшие записи:", ""]
     bookings.forEach((b, i) => {
-      const created = new Date(b.createdAt).toLocaleDateString("ru-RU", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
+      const d = new Date(b.scheduledAt)
+      const dateStr = d.toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "long",
       })
+      const timeStr = d.toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+      lines.push(`${i + 1}. ${b.serviceName}`)
+      lines.push(`   Мастер: ${b.masterName}`)
+      lines.push(`   ${dateStr}, ${timeStr}`)
       lines.push("")
-      lines.push(`${i + 1}) ID: ${b.id}`)
-      lines.push(`   Статус: ${b.status}`)
-      lines.push(`   Создано: ${created}`)
     })
-    await ctx.reply(lines.join("\n"))
+    await ctx.reply(lines.join("\n").trim())
   } catch {
     await ctx.reply(UNAVAILABLE)
   }
@@ -158,24 +177,84 @@ bot.command("cancel", async (ctx) => {
     await updateTelegramState(telegramId, "IDLE")
     await stateRouter(ctx, "IDLE")
     await ctx.reply("Действие отменено. Вы возвращены в начальное состояние.")
-  } catch {
+  } catch (e) {
+    const err = e as Error & { statusCode?: number }
+    if (err.statusCode === 409) {
+      await ctx.reply("Переход в начальное состояние сейчас недоступен. Попробуйте позже.")
+      return
+    }
     await ctx.reply(UNAVAILABLE)
   }
 })
 
+bot.callbackQuery(/^day:(.+)$/, async (ctx) => {
+  try {
+    await onDayChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] day callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("manual_date", async (ctx) => {
+  try {
+    await onManualDateChosen(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] manual_date callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
 bot.callbackQuery(/^svc:(.+)$/, async (ctx) => {
-  await onServiceChosen(ctx, ctx.match[1])
-  await ctx.answerCallbackQuery().catch(() => {})
+  try {
+    await onServiceChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] svc callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
 })
 
 bot.callbackQuery(/^mst:(.+)$/, async (ctx) => {
-  await onMasterChosen(ctx, ctx.match[1])
-  await ctx.answerCallbackQuery().catch(() => {})
+  try {
+    await onMasterChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] mst callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
 })
 
 bot.callbackQuery(/^t:(.+)$/, async (ctx) => {
-  await onTimeSlotChosen(ctx, ctx.match[1])
-  await ctx.answerCallbackQuery().catch(() => {})
+  try {
+    await onTimeSlotChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] time callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
+  try {
+    await onConfirmBooking(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] confirm callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("time_back", async (ctx) => {
+  try {
+    await onTimeBack(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] time_back callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
 })
 
 bot.on("message:text", async (ctx) => {
@@ -183,7 +262,12 @@ bot.on("message:text", async (ctx) => {
   const from = ctx.from
   if (!from || !text) return
   const session = getBookingSession(from.id)
-  if (session.serviceId && session.masterId && isDateString(text)) {
+  if (
+    session.awaitingDate &&
+    session.serviceId &&
+    session.masterId &&
+    isDateString(text)
+  ) {
     await onDateEntered(ctx, text, session.serviceId, session.masterId)
   }
 })

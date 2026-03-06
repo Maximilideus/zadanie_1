@@ -166,3 +166,46 @@ export async function getBookingsByTelegramId(telegramId: string) {
     handlePrismaError(e)
   }
 }
+
+/** Upcoming bookings for Telegram: scheduledAt > now, with service and master names, limit 10. */
+export async function getUpcomingBookingsByTelegramId(telegramId: string) {
+  const user = await prisma.user.findUnique({
+    where: { telegramId },
+    select: { id: true },
+  })
+  if (!user) return []
+  const now = new Date()
+  const bookings = await prisma.booking.findMany({
+    where: {
+      userId: user.id,
+      scheduledAt: { gt: now },
+      status: { in: ["PENDING", "CONFIRMED"] },
+      serviceId: { not: null },
+      masterId: { not: null },
+    },
+    select: { id: true, scheduledAt: true, serviceId: true, masterId: true },
+    orderBy: { scheduledAt: "asc" },
+    take: 10,
+  })
+  if (bookings.length === 0) return []
+  const serviceIds = [...new Set(bookings.map((b) => b.serviceId).filter(Boolean) as string[])]
+  const masterIds = [...new Set(bookings.map((b) => b.masterId).filter(Boolean) as string[])]
+  const [services, masters] = await Promise.all([
+    prisma.service.findMany({
+      where: { id: { in: serviceIds } },
+      select: { id: true, name: true },
+    }),
+    prisma.user.findMany({
+      where: { id: { in: masterIds } },
+      select: { id: true, name: true },
+    }),
+  ])
+  const serviceByName = Object.fromEntries(services.map((s) => [s.id, s.name]))
+  const masterByName = Object.fromEntries(masters.map((m) => [m.id, m.name]))
+  return bookings.map((b) => ({
+    id: b.id,
+    scheduledAt: b.scheduledAt,
+    serviceName: b.serviceId ? serviceByName[b.serviceId] ?? "—" : "—",
+    masterName: b.masterId ? masterByName[b.masterId] ?? "—" : "—",
+  }))
+}

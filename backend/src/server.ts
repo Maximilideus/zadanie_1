@@ -119,9 +119,9 @@ app.setErrorHandler((error, request, reply) => {
   }
 
   if (err.message === "INVALID_TRANSITION") {
-    return reply.status(400).send({
-      statusCode: 400,
-      error: "Bad Request",
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
       message: "Invalid state transition",
     })
   }
@@ -187,6 +187,14 @@ app.setErrorHandler((error, request, reply) => {
       statusCode: 400,
       error: "Bad Request",
       message: "Date must be within the next 60 days",
+    })
+  }
+
+  if (err.message === "DATE_IS_TODAY") {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "Booking on the current day is not allowed",
     })
   }
 

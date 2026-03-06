@@ -55,10 +55,12 @@ export async function getAvailableSlots(
   const dayStart = DateTime.fromISO(`${date}T00:00:00`, { zone: timezone })
   if (!dayStart.isValid) throw new Error("INVALID_DATE")
 
-  const todayStart = DateTime.now().setZone(timezone).startOf("day")
-  const maxDate = todayStart.plus({ days: 60 })
-  if (dayStart < todayStart) throw new Error("DATE_OUT_OF_RANGE")
-  if (dayStart > maxDate) throw new Error("DATE_OUT_OF_RANGE")
+  const nowInTz = DateTime.now().setZone(timezone)
+  const todayStr = nowInTz.toFormat("yyyy-MM-dd")
+  const maxStr = nowInTz.plus({ days: 60 }).toFormat("yyyy-MM-dd")
+  if (date < todayStr) throw new Error("DATE_OUT_OF_RANGE")
+  if (date === todayStr) throw new Error("DATE_IS_TODAY")
+  if (date > maxStr) throw new Error("DATE_OUT_OF_RANGE")
 
   const dayOfWeek = dayStart.weekday
   const dayEnd = dayStart.endOf("day")
@@ -145,7 +147,6 @@ export async function getAvailableSlots(
     workingIntervals = workingIntervals.flatMap((w) => subtractInterval(w, bookInterval))
   }
 
-  const nowInTz = DateTime.now().setZone(timezone)
   const slotStarts: DateTime[] = []
 
   for (const interval of workingIntervals) {

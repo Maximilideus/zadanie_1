@@ -31,10 +31,15 @@ export async function getUserByTelegramId(
   return telegramAuth(telegramId)
 }
 
+export interface PatchStateResponse {
+  ok: true
+  state: string
+}
+
 export async function updateTelegramState(
   telegramId: string,
   newState: string
-): Promise<UpdateStateResponse> {
+): Promise<PatchStateResponse> {
   const res = await fetch(`${BACKEND_URL}/telegram/state`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -42,10 +47,14 @@ export async function updateTelegramState(
   })
 
   if (!res.ok) {
-    throw new Error(`Backend error: ${res.status}`)
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    const msg = body.message ?? `Backend error: ${res.status}`
+    const err = new Error(msg) as Error & { statusCode?: number }
+    err.statusCode = res.status
+    throw err
   }
 
-  return (await res.json()) as UpdateStateResponse
+  return (await res.json()) as PatchStateResponse
 }
 
 export interface UserBookingItem {
@@ -65,6 +74,25 @@ export async function getUserBookings(
   }
 
   return (await res.json()) as UserBookingItem[]
+}
+
+export interface UpcomingBookingItem {
+  id: string
+  scheduledAt: string
+  serviceName: string
+  masterName: string
+}
+
+export async function getUpcomingBookings(
+  telegramId: string
+): Promise<UpcomingBookingItem[]> {
+  const res = await fetch(
+    `${BACKEND_URL}/bookings/user/${encodeURIComponent(telegramId)}/upcoming`
+  )
+  if (!res.ok) {
+    throw new Error(`Backend error: ${res.status}`)
+  }
+  return (await res.json()) as UpcomingBookingItem[]
 }
 
 export interface CreateTelegramBookingResponse {
@@ -95,6 +123,18 @@ export async function createTelegramBooking(
   }
 
   return (await res.json()) as CreateTelegramBookingResponse
+}
+
+/** Ensure user has an active PENDING booking. Idempotent. Does not change state (backend sets BOOKING_FLOW on create). */
+export async function ensureActiveBooking(telegramId: string): Promise<void> {
+  try {
+    await createTelegramBooking(telegramId)
+  } catch (e) {
+    if (e instanceof Error && e.message === "ACTIVE_BOOKING_EXISTS") {
+      return
+    }
+    throw e
+  }
 }
 
 async function parseError(res: Response): Promise<never> {

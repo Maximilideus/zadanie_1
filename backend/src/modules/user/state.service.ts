@@ -7,7 +7,7 @@ export type UserState = (typeof USER_STATES)[number]
 const ALLOWED_TRANSITIONS: Record<UserState, UserState[]> = {
   IDLE: ["CONSULTING"],
   CONSULTING: ["BOOKING_FLOW", "IDLE"],
-  BOOKING_FLOW: ["BOOKED"],
+  BOOKING_FLOW: ["BOOKED", "IDLE"],
   BOOKED: ["IDLE", "CONSULTING"],
 }
 

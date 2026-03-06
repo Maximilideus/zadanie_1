@@ -4,7 +4,11 @@ import {
   updateBookingStatusSchema,
   telegramIdParamSchema,
 } from "./booking.schema"
-import { updateBookingStatus, getBookingsByTelegramId } from "./booking.service"
+import {
+  updateBookingStatus,
+  getBookingsByTelegramId,
+  getUpcomingBookingsByTelegramId,
+} from "./booking.service"
 
 export async function updateBookingStatusHandler(request: FastifyRequest) {
   const { id } = bookingIdParamSchema.parse(request.params)
@@ -15,4 +19,9 @@ export async function updateBookingStatusHandler(request: FastifyRequest) {
 export async function getUserBookingsHandler(request: FastifyRequest) {
   const { telegramId } = telegramIdParamSchema.parse(request.params)
   return getBookingsByTelegramId(telegramId)
+}
+
+export async function getUpcomingBookingsHandler(request: FastifyRequest) {
+  const { telegramId } = telegramIdParamSchema.parse(request.params)
+  return getUpcomingBookingsByTelegramId(telegramId)
 }
