@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts",
+    "link-catalog": "ts-node prisma/linkCatalogItemsToServices.ts"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +17,7 @@
   },
   "type": "commonjs",
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@fastify/jwt": "^10.0.0",
     "@fastify/rate-limit": "^10.3.0",
     "@prisma/client": "^5.22.0",
@@ -32,7 +34,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.6",
     "@types/luxon": "^3.7.1",
-    "@types/node": "^25.3.2",
+    "@types/node": "^25.3.5",
     "@types/pg": "^8.16.0",
     "prisma": "^5.22.0",
     "ts-node-dev": "^2.0.0",

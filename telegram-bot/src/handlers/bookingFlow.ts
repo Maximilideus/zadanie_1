@@ -10,6 +10,14 @@ import {
   ensureActiveBooking,
   type ServiceItem,
 } from "../api/backend.client.js"
+import {
+  formatServiceDisplayName,
+  formatServiceButtonLabel,
+  formatBookingDate,
+  formatBookingTime,
+  formatBookingSummary,
+  formatMasterDisplayName,
+} from "../services/formatters.js"
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 const MAX_SLOT_BUTTONS = 24
@@ -64,7 +72,7 @@ export function clearBookingSession(telegramId: number): void {
 function buildSummary(session: BookingSession): string {
   const s = session.serviceName ?? "—"
   const m = session.masterName ?? "—"
-  const d = session.dateStr ?? "—"
+  const d = session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—"
   const t = session.timeStr ?? "—"
   return [
     "Услуга: " + s,
@@ -94,7 +102,7 @@ async function ensureBookingAndRetry<T>(
 }
 
 function serviceButtonLabel(s: ServiceItem): string {
-  return `${s.name} • ${s.durationMin}m • ${s.price}`
+  return formatServiceButtonLabel(s)
 }
 
 function slotLabel(isoUtc: string, timezone: string): string {
@@ -177,6 +185,63 @@ async function editWizardMessage(
   }
 }
 
+/**
+ * Start wizard with a pre-selected service (from deep link).
+ * Skips the service selection step and goes straight to master selection.
+ */
+export async function startWizardWithService(
+  ctx: Context,
+  serviceId: string,
+  serviceName: string,
+  durationMin: number | undefined,
+  introText: string,
+): Promise<void> {
+  const from = ctx.from
+  if (!from) return
+  const telegramId = String(from.id)
+
+  await ensureActiveBooking(telegramId)
+  clearBookingSession(from.id)
+
+  try {
+    await ensureBookingAndRetry(telegramId, () =>
+      setBookingService(telegramId, serviceId)
+    )
+  } catch {
+    const session = getBookingSession(from.id)
+    await editWizardMessage(
+      ctx,
+      session,
+      "Не удалось начать запись. Попробуйте /book",
+      new InlineKeyboard()
+    )
+    return
+  }
+
+  setBookingSession(from.id, { serviceId, serviceName, durationMin })
+
+  const masters = await getMasters(serviceId)
+  if (masters.length === 0) {
+    const text = introText + "\n\nНет доступных мастеров для этой услуги."
+    const sent = await ctx.reply(text)
+    setBookingSession(from.id, {
+      wizardMessageId: { chatId: sent.chat.id, messageId: sent.message_id },
+    })
+    return
+  }
+
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < masters.length; i++) {
+    keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
+    if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
+  }
+  const text = introText + "\n\nВыберите мастера:"
+  const sent = await ctx.reply(text, { reply_markup: keyboard })
+  setBookingSession(from.id, {
+    wizardMessageId: { chatId: sent.chat.id, messageId: sent.message_id },
+  })
+}
+
 /** Start or resume wizard: ensure booking, show single wizard message (step A or current step). */
 export async function startWizard(ctx: Context): Promise<void> {
   const from = ctx.from
@@ -241,7 +306,7 @@ export async function onServiceChosen(ctx: Context, serviceId: string): Promise<
       await ensureBookingAndRetry(tid, () => setBookingService(tid, serviceId))
       const services = await getServices()
       const s = services.find((x) => x.id === serviceId)
-      serviceName = s?.name ?? "—"
+      serviceName = s ? formatServiceDisplayName(s) : "—"
       setBookingSession(telegramId, { serviceId, serviceName, durationMin: s?.durationMin })
     } catch (e) {
       await handleBackendError(ctx, e, session)
@@ -259,7 +324,7 @@ export async function onServiceChosen(ctx: Context, serviceId: string): Promise<
 
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < masters.length; i++) {
-      keyboard.text(masters[i].name, `mst:${masters[i].id}`)
+      keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
       if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
     }
     const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите мастера:"
@@ -294,7 +359,7 @@ export async function onMasterChosen(ctx: Context, masterId: string): Promise<vo
         const masters = await getMasters(serviceId)
         const keyboard = new InlineKeyboard()
         for (let i = 0; i < masters.length; i++) {
-          keyboard.text(masters[i].name, `mst:${masters[i].id}`)
+          keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
           if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
         }
         const text = buildSummary(session) + "\n\nВыберите мастера:"
@@ -307,7 +372,10 @@ export async function onMasterChosen(ctx: Context, masterId: string): Promise<vo
 
     const masters = await getMasters(serviceId)
     const master = masters.find((m) => m.id === masterId)
-    setBookingSession(telegramId, { masterId, masterName: master?.name ?? "—" })
+    setBookingSession(telegramId, {
+      masterId,
+      masterName: master ? formatMasterDisplayName(master) : "—",
+    })
     console.log("[wizard] step: master chosen", masterId)
 
     const days = getNext14Days()
@@ -398,7 +466,7 @@ export async function onManualDateChosen(ctx: Context): Promise<void> {
     const session = getBookingSession(telegramId)
     const text =
       buildSummary(session) +
-      "\n\nВведите дату в формате ГГГГ-ММ-ДД (например 2025-06-15):"
+      "\n\nВведите дату в формате ГГГГ-ММ-ДД (например 2026-05-15):"
     await editWizardMessage(ctx, session, text, new InlineKeyboard())
   } catch (e) {
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
@@ -466,12 +534,6 @@ export async function onDateEntered(
   await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
 }
 
-/** Format date for confirmation (e.g. "12 мая"). */
-function formatDateRu(dateStr: string): string {
-  const d = new Date(dateStr + "T12:00:00Z")
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
-}
-
 /** Show confirmation screen; booking is created only after user confirms. */
 export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Promise<void> {
   const telegramId = ctx.from?.id
@@ -481,22 +543,17 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
   if (!dateStr) return
 
   try {
-    const date = new Date(scheduledAtIso)
-    const timeStr = date.toLocaleTimeString("ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
+    const timeStr = formatBookingTime(scheduledAtIso)
     setBookingSession(telegramId, { timeStr })
-    const dateFormatted = formatDateRu(dateStr)
     const duration = durationMin != null ? `${durationMin} мин` : "—"
     const confirmText =
       "Подтвердите запись:\n\n" +
       `Услуга: ${serviceName ?? "—"}\n` +
       `Мастер: ${masterName ?? "—"}\n` +
-      `Дата: ${dateFormatted}\n` +
+      `Дата: ${formatBookingDate(dateStr + "T12:00:00Z")}\n` +
       `Время: ${timeStr}\n` +
-      `Длительность: ${duration}`
+      `Длительность: ${duration}\n\n` +
+      "Если нужно изменить дату или время, нажмите «Назад»."
     const keyboard = new InlineKeyboard()
       .text("Подтвердить запись", `confirm:${scheduledAtIso}`)
       .row()
@@ -521,44 +578,40 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
     await handleBackendError(ctx, e, session)
     return
   }
+  const summary = formatBookingSummary({
+    serviceDisplayName: session.serviceName ?? "—",
+    masterName: session.masterName ?? "—",
+    scheduledAt: scheduledAtIso,
+  })
   clearBookingSession(telegramId)
   console.log("[wizard] step: booking confirmed and created")
   await ctx.editMessageText(
-    "✅ Заявка на запись создана. Ожидайте подтверждения.\n\nПроверить записи: /my_bookings"
+    "✅ Заявка на запись создана.\n\n" +
+      `Услуга: ${summary.service}\n` +
+      `Мастер: ${summary.master}\n` +
+      `Дата: ${summary.date}\n` +
+      `Время: ${summary.time}\n\n` +
+      "Проверить записи: /my_bookings"
   )
 }
 
-/** User pressed Back: return to time slot selection. */
+/** User pressed Back: return to DATE selection (not time). */
 export async function onTimeBack(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
   const session = getBookingSession(telegramId)
-  const { serviceId, masterId, dateStr } = session
-  if (!serviceId || !masterId || !dateStr) return
+  const { masterId } = session
+  if (!masterId) return
   try {
-    const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
     setBookingSession(telegramId, { timeStr: undefined })
-    if (slots.length === 0) {
-      const days = getNext14Days()
-      const keyboard = new InlineKeyboard()
-      for (let i = 0; i < days.length; i++) {
-        keyboard.text(days[i].label, `day:${days[i].date}`)
-        if ((i + 1) % DAYS_BUTTONS_PER_ROW === 0) keyboard.row()
-      }
-      keyboard.row().text("📅 Ввести дату", "manual_date")
-      const text =
-        buildSummary(getBookingSession(telegramId)) +
-        "\n\nНа эту дату нет слотов. Выберите другую дату:"
-      await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
-      return
-    }
-    const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
+    const days = getNext14Days()
     const keyboard = new InlineKeyboard()
-    for (let i = 0; i < toShow.length; i++) {
-      keyboard.text(slotLabel(toShow[i], timezone), `t:${toShow[i]}`)
-      if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
+    for (let i = 0; i < days.length; i++) {
+      keyboard.text(days[i].label, `day:${days[i].date}`)
+      if ((i + 1) % DAYS_BUTTONS_PER_ROW === 0) keyboard.row()
     }
-    const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите время:"
+    keyboard.row().text("📅 Ввести дату", "manual_date")
+    const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите дату:"
     await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
   } catch (e) {
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})

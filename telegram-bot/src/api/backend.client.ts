@@ -79,7 +79,7 @@ export async function getUserBookings(
 export interface UpcomingBookingItem {
   id: string
   scheduledAt: string
-  serviceName: string
+  service: { name: string; durationMin?: number }
   masterName: string
 }
 
@@ -228,6 +228,29 @@ export async function setBookingMaster(
   })
   if (!res.ok) return parseError(res)
   return (await res.json()) as BookingUpdateResponse
+}
+
+export interface CatalogItemResponse {
+  id: string
+  category: string
+  type: string
+  gender: string | null
+  groupKey: string | null
+  titleRu: string
+  subtitleRu: string | null
+  descriptionRu: string | null
+  price: number | null
+  durationMin: number | null
+  serviceId: string | null
+  isVisible: boolean
+  service: { id: string; name: string; durationMin: number; price: number } | null
+}
+
+export async function getCatalogItemById(id: string): Promise<CatalogItemResponse | null> {
+  const res = await fetch(`${BACKEND_URL}/catalog/item/${encodeURIComponent(id)}`)
+  if (res.status === 404) return null
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as CatalogItemResponse
 }
 
 export async function setBookingTime(

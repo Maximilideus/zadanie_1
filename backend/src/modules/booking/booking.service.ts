@@ -193,19 +193,23 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
   const [services, masters] = await Promise.all([
     prisma.service.findMany({
       where: { id: { in: serviceIds } },
-      select: { id: true, name: true },
+      select: { id: true, name: true, durationMin: true },
     }),
     prisma.user.findMany({
       where: { id: { in: masterIds } },
       select: { id: true, name: true },
     }),
   ])
-  const serviceByName = Object.fromEntries(services.map((s) => [s.id, s.name]))
+  const serviceById = Object.fromEntries(
+    services.map((s) => [s.id, { name: s.name, durationMin: s.durationMin }])
+  )
   const masterByName = Object.fromEntries(masters.map((m) => [m.id, m.name]))
   return bookings.map((b) => ({
     id: b.id,
     scheduledAt: b.scheduledAt,
-    serviceName: b.serviceId ? serviceByName[b.serviceId] ?? "—" : "—",
+    service: b.serviceId
+      ? serviceById[b.serviceId] ?? { name: "—", durationMin: undefined }
+      : { name: "—", durationMin: undefined },
     masterName: b.masterId ? masterByName[b.masterId] ?? "—" : "—",
   }))
 }

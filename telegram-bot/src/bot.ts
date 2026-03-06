@@ -1,7 +1,9 @@
 import "dotenv/config"
 import { Bot } from "grammy"
 import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, ensureActiveBooking } from "./api/backend.client.js"
+import { formatServiceDisplayName, formatBookingDate, formatBookingTime, formatMasterDisplayName } from "./services/formatters.js"
 import { stateRouter } from "./router/state.router.js"
+import { parseCatalogPayload, resolveCatalogDeepLink, formatCatalogIntro } from "./services/deeplink.js"
 import {
   onServiceChosen,
   onMasterChosen,
@@ -13,6 +15,7 @@ import {
   onTimeBack,
   getBookingSession,
   clearBookingSession,
+  startWizardWithService,
   isDateString,
 } from "./handlers/bookingFlow.js"
 
@@ -47,6 +50,49 @@ bot.command("start", async (ctx) => {
   const name = from.first_name ?? undefined
 
   try {
+    await telegramAuth(telegramId, name)
+
+    const payload = ctx.match ? String(ctx.match) : undefined
+    const catalogItemId = parseCatalogPayload(payload)
+
+    if (catalogItemId) {
+      const result = await resolveCatalogDeepLink(catalogItemId)
+
+      if (!result.ok) {
+        if (result.reason === "not_bookable") {
+          await ctx.reply(
+            "Для этой позиции прямая запись недоступна. " +
+            "Пожалуйста, воспользуйтесь консультацией или выберите другую услугу.\n\n" +
+            "/consult — консультация\n/book — запись"
+          )
+        } else {
+          await ctx.reply(
+            "Не удалось открыть запись по выбранной услуге. " +
+            "Пожалуйста, начните заново через /consult или /book."
+          )
+        }
+        return
+      }
+
+      await ensureActiveBooking(telegramId)
+      try {
+        await updateTelegramState(telegramId, "BOOKING_FLOW")
+      } catch {
+        // already in BOOKING_FLOW — ok
+      }
+
+      const introText = formatCatalogIntro(result.item)
+      const service = result.item.service!
+      await startWizardWithService(
+        ctx,
+        result.serviceId,
+        formatServiceDisplayName(service),
+        service.durationMin,
+        introText,
+      )
+      return
+    }
+
     const { state } = await telegramAuth(telegramId, name)
     await stateRouter(ctx, state)
   } catch {
@@ -145,19 +191,12 @@ bot.command("my_bookings", async (ctx) => {
 
     const lines = ["Ваши ближайшие записи:", ""]
     bookings.forEach((b, i) => {
-      const d = new Date(b.scheduledAt)
-      const dateStr = d.toLocaleDateString("ru-RU", {
-        day: "numeric",
-        month: "long",
-      })
-      const timeStr = d.toLocaleTimeString("ru-RU", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      })
-      lines.push(`${i + 1}. ${b.serviceName}`)
-      lines.push(`   Мастер: ${b.masterName}`)
-      lines.push(`   ${dateStr}, ${timeStr}`)
+      const serviceDisplay = formatServiceDisplayName(b.service)
+      const masterDisplay = formatMasterDisplayName(b.masterName)
+      lines.push(`${i + 1}) ${serviceDisplay}`)
+      lines.push(`Мастер: ${masterDisplay}`)
+      lines.push(`Дата: ${formatBookingDate(b.scheduledAt)}`)
+      lines.push(`Время: ${formatBookingTime(b.scheduledAt)}`)
       lines.push("")
     })
     await ctx.reply(lines.join("\n").trim())

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
+import { useCatalog } from "../hooks/useCatalog.js";
+import { CatalogPriceBlock } from "../components/CatalogPriceBlock.jsx";
 
 // ─── FAQ Item ─────────────────────────────────────────────────────────────────
 function FaqItem({ question, answer }) {
@@ -16,43 +18,8 @@ function FaqItem({ question, answer }) {
   );
 }
 
-// ─── Price Table ──────────────────────────────────────────────────────────────
-const PRICE_ZONES = {
-  women: [
-    { zone: "Верхняя губа",              price: "800",   time: "5 мин" },
-    { zone: "Подбородок",                price: "900",   time: "5 мин" },
-    { zone: "Щёки + скулы",             price: "1 400", time: "10 мин" },
-    { zone: "Лицо полностью",            price: "2 800", time: "20 мин" },
-    { zone: "Подмышки",                  price: "1 500", time: "10 мин" },
-    { zone: "Предплечья",                price: "2 200", time: "15 мин" },
-    { zone: "Руки полностью",            price: "3 200", time: "20 мин" },
-    { zone: "Голени",                    price: "2 800", time: "20 мин" },
-    { zone: "Бёдра",                     price: "3 200", time: "25 мин" },
-    { zone: "Ноги полностью",            price: "5 500", time: "40 мин" },
-    { zone: "Живот (линия)",             price: "1 200", time: "10 мин" },
-    { zone: "Живот полностью",           price: "2 800", time: "20 мин" },
-    { zone: "Спина полностью",           price: "4 500", time: "30 мин" },
-    { zone: "Бикини классическое",       price: "2 000", time: "15 мин" },
-    { zone: "Бикини глубокое",           price: "3 200", time: "20 мин" },
-    { zone: "Тотальное бикини",          price: "4 500", time: "30 мин" },
-  ],
-  men: [
-    { zone: "Борода (контур / шея)",     price: "2 000", time: "15 мин" },
-    { zone: "Спина полностью",           price: "6 500", time: "45 мин" },
-    { zone: "Плечи",                     price: "3 500", time: "25 мин" },
-    { zone: "Грудь",                     price: "4 000", time: "30 мин" },
-    { zone: "Живот",                     price: "3 200", time: "20 мин" },
-    { zone: "Ягодицы",                   price: "3 500", time: "25 мин" },
-    { zone: "Ноги полностью",            price: "7 500", time: "55 мин" },
-    { zone: "Голени",                    price: "3 800", time: "25 мин" },
-    { zone: "Подмышки",                  price: "1 800", time: "10 мин" },
-    { zone: "Руки полностью",            price: "4 500", time: "30 мин" },
-    { zone: "Интимная зона (мужская)",   price: "3 500", time: "20 мин" },
-  ],
-};
-
 export function LaserPage({ botUrl }) {
-  const [priceTab, setPriceTab] = useState("women");
+  const { data: catalogData, loading: catalogLoading, error: catalogError } = useCatalog("laser");
 
   const [refHow, visibleHow]           = useScrollAnimation({ threshold: 0.1 });
   const [refBenefits, visibleBenefits] = useScrollAnimation({ threshold: 0.1 });
@@ -393,40 +360,15 @@ export function LaserPage({ botUrl }) {
           <p className="lp-price-note-top">
             Цена указана за одну процедуру. При оплате курса из 5 сеансов — скидка 10%.
           </p>
+          <p className="lp-price-note-top">
+            Прайс-лист кликабельный. Нажмите на нужную зону, чтобы быстро перейти в Telegram-бот и записаться без консультации. Это удобно, если вам нужна только одна зона. Если нужно несколько зон или консультация — воспользуйтесь кнопкой под прайс-листом.
+          </p>
 
-          <div className="lp-price-tabs">
-            <button
-              className={`lp-price-tab${priceTab === "women" ? " lp-price-tab--active" : ""}`}
-              onClick={() => setPriceTab("women")}
-            >
-              Женщины
-            </button>
-            <button
-              className={`lp-price-tab${priceTab === "men" ? " lp-price-tab--active" : ""}`}
-              onClick={() => setPriceTab("men")}
-            >
-              Мужчины
-            </button>
-          </div>
-
-          <div className="lp-price-table">
-            <div className="lp-price-header">
-              <span>Зона</span>
-              <span>Время</span>
-              <span>Цена</span>
-            </div>
-            {PRICE_ZONES[priceTab].map((row) => (
-              <div className="lp-price-row" key={row.zone}>
-                <span className="lp-price-zone">{row.zone}</span>
-                <span className="lp-price-time">{row.time}</span>
-                <span className="lp-price-val">{row.price} ₽</span>
-              </div>
-            ))}
-          </div>
+          <CatalogPriceBlock data={catalogData} loading={catalogLoading} error={catalogError} />
 
           <div className="lp-price-cta">
             <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
-              Записаться в Telegram
+              Консультация и подбор зон
             </a>
           </div>
         </div>

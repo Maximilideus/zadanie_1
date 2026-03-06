@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
+import { useCatalog } from "../hooks/useCatalog.js";
+import { buildTelegramLink } from "../api/telegram.js";
 
 function FaqItem({ question, answer }) {
   const [open, setOpen] = useState(false);
@@ -15,30 +17,38 @@ function FaqItem({ question, answer }) {
   );
 }
 
-// Электроэпиляция — поминутный прайс, не по зонам
-const PRICE_ITEMS = [
-  { label: "15 минут",  price: "900" },
-  { label: "30 минут",  price: "1 700" },
-  { label: "45 минут",  price: "2 400" },
-  { label: "60 минут",  price: "3 000" },
-  { label: "90 минут",  price: "4 200" },
-  { label: "120 минут", price: "5 200" },
-];
+/** Collect unique items from "time" group across genders for the price grid */
+function getTimePackageItems(sections) {
+  if (!sections || typeof sections !== "object") return [];
+  const byId = new Map();
+  for (const genderSections of Object.values(sections)) {
+    if (!genderSections?.time?.items?.length) continue;
+    for (const item of genderSections.time.items) {
+      if (item?.id && !byId.has(item.id)) byId.set(item.id, item);
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => (a.durationMin ?? 0) - (b.durationMin ?? 0));
+}
 
-const ZONE_TIMES = [
-  { zone: "Верхняя губа",             time: "15–30 мин / сеанс", sessions: "8–12 сеансов" },
-  { zone: "Подбородок",               time: "20–40 мин / сеанс", sessions: "10–15 сеансов" },
-  { zone: "Щёки / скулы",            time: "30–60 мин / сеанс", sessions: "10–15 сеансов" },
-  { zone: "Брови (коррекция формы)",  time: "15–20 мин / сеанс", sessions: "6–10 сеансов" },
-  { zone: "Шея (контур бороды)",      time: "20–40 мин / сеанс", sessions: "8–12 сеансов" },
-  { zone: "Ареолы",                   time: "15–25 мин / сеанс", sessions: "6–10 сеансов" },
-  { zone: "Белая линия живота",       time: "15–20 мин / сеанс", sessions: "6–8 сеансов" },
-  { zone: "Пальцы рук / ног",         time: "10–20 мин / сеанс", sessions: "6–8 сеансов" },
-  { zone: "Единичные волоски (тело)", time: "15–30 мин / сеанс", sessions: "5–8 сеансов" },
-  { zone: "Финальная доработка после лазера", time: "По факту",  sessions: "Индивидуально" },
-];
+/** All non-time groups as { groupKey, title, items } for zone/info sections */
+function getZoneAndInfoGroups(sections) {
+  if (!sections || typeof sections !== "object") return [];
+  const seen = new Set();
+  const result = [];
+  for (const genderSections of Object.values(sections)) {
+    if (!genderSections || typeof genderSections !== "object") continue;
+    for (const [groupKey, group] of Object.entries(genderSections)) {
+      if (groupKey === "time" || !group?.items?.length) continue;
+      if (seen.has(groupKey)) continue;
+      seen.add(groupKey);
+      result.push({ groupKey, title: group.title, items: group.items });
+    }
+  }
+  return result;
+}
 
 export function ElectroPage({ botUrl }) {
+  const { data: catalogData, loading: catalogLoading, error: catalogError } = useCatalog("electro");
   const [refHow, visibleHow]           = useScrollAnimation({ threshold: 0.1 });
   const [refBenefits, visibleBenefits] = useScrollAnimation({ threshold: 0.1 });
   const [refZones, visibleZones]       = useScrollAnimation({ threshold: 0.1 });
@@ -300,20 +310,38 @@ export function ElectroPage({ botUrl }) {
             Ниже — ориентировочное время сеанса и количество процедур для каждой зоны. 
             Точные цифры зависят от плотности волос и индивидуальных особенностей.
           </p>
-          <div className="lp-zone-table">
-            <div className="lp-zone-table-header">
-              <span>Зона</span>
-              <span>Время / сеанс</span>
-              <span>Кол-во сеансов</span>
-            </div>
-            {ZONE_TIMES.map((row) => (
-              <div className="lp-zone-table-row" key={row.zone}>
-                <span className="lp-zone-table-zone">{row.zone}</span>
-                <span className="lp-zone-table-time">{row.time}</span>
-                <span className="lp-zone-table-sessions">{row.sessions}</span>
+          {catalogLoading && <p className="lp-catalog-loading">Загрузка…</p>}
+          {catalogError && <p className="lp-catalog-error">Не удалось загрузить данные. {catalogError}</p>}
+          {!catalogLoading && !catalogError && getZoneAndInfoGroups(catalogData?.sections).map(({ groupKey, title, items }) => (
+            <div key={groupKey} className="lp-catalog-group">
+              <h3 className="lp-catalog-group-title">{title}</h3>
+              <div className="lp-zone-table">
+                <div className="lp-zone-table-header">
+                  <span>Зона</span>
+                  <span>Время / сеанс</span>
+                  <span>Кол-во сеансов / примечание</span>
+                </div>
+                {items.map((item) => {
+                  const isInfo = item.type === "INFO";
+                  return (
+                    <div className="lp-zone-table-row" key={item.id}>
+                      <span className="lp-zone-table-zone">{item.title}</span>
+                      <span className="lp-zone-table-time">
+                        {isInfo
+                          ? (item.subtitle ?? "—")
+                          : (item.subtitle ?? (item.durationMin != null ? `${item.durationMin} мин` : "—"))}
+                      </span>
+                      <span className="lp-zone-table-sessions">
+                        {isInfo
+                          ? (item.description ?? "—")
+                          : (item.description ?? (item.price != null ? `${item.price} ₽` : "—"))}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
           <div className="lp-zones-note">
             <strong>Крупные зоны (ноги, спина)</strong> — для них эффективнее лазерная эпиляция. 
             Электро на больших зонах потребует многих часов работы и значительных затрат. 
@@ -331,20 +359,36 @@ export function ElectroPage({ botUrl }) {
             Электроэпиляция тарифицируется по времени — это честнее, 
             чем цена «за зону», потому что плотность волос у всех разная.
           </p>
-          <div className="lp-electro-price-grid">
-            {PRICE_ITEMS.map((item) => (
-              <div className="lp-electro-price-card" key={item.label}>
-                <span className="lp-electro-price-time">{item.label}</span>
-                <span className="lp-electro-price-val">{item.price} ₽</span>
+          <p className="lp-price-note-top">
+            Прайс-лист кликабельный. Нажмите на нужный пакет времени, чтобы быстро перейти в Telegram-бот и записаться без консультации. Если нужна консультация или подбор времени — воспользуйтесь кнопкой под прайс-листом.
+          </p>
+          {catalogLoading && <p className="lp-catalog-loading">Загрузка прайса…</p>}
+          {catalogError && <p className="lp-catalog-error">Не удалось загрузить прайс. {catalogError}</p>}
+          {!catalogLoading && !catalogError && (() => {
+            const timeItems = getTimePackageItems(catalogData?.sections);
+            return timeItems.length > 0 ? (
+              <div className="lp-electro-price-grid">
+                {timeItems.map((item) => (
+                  <a
+                    key={item.id}
+                    href={buildTelegramLink(item.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="lp-electro-price-card lp-electro-price-card--bookable"
+                  >
+                    <span className="lp-electro-price-time">{item.subtitle ?? (item.durationMin != null ? `${item.durationMin} мин` : item.title)}</span>
+                    <span className="lp-electro-price-val">{item.price != null ? `${item.price} ₽` : "—"}</span>
+                  </a>
+                ))}
               </div>
-            ))}
-          </div>
+            ) : null;
+          })()}
           <div className="lp-electro-price-note">
             Первая консультация — бесплатно. Анестезирующий крем — 200 ₽ (при необходимости).
           </div>
           <div className="lp-price-cta">
             <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
-              Записаться в Telegram
+              Консультация и подбор времени
             </a>
           </div>
         </div>

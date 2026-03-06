@@ -15,11 +15,13 @@ import { telegramAvailabilityRoutes } from "./routes/telegramAvailability"
 import { telegramMastersRoutes } from "./routes/telegramMasters"
 import { telegramServicesRoutes } from "./routes/telegramServices"
 import { bookingRoutes } from "./modules/booking/booking.routes"
+import { catalogRoutes } from "./modules/catalog/catalog.routes"
 import requestIdPlugin from "./plugins/requestId"
 import rateLimitPlugin from "./plugins/rateLimit"
 import jwtPlugin from "./plugins/jwt"
 import { authenticate } from "./middlewares/auth.middleware"
 import { startExpirePendingBookingsJob } from "./jobs/expirePendingBookings"
+import cors from "@fastify/cors"
 
 const app = Fastify({
   logger: true,
@@ -31,13 +33,17 @@ const app = Fastify({
   },
 })
 
+app.register(cors, {
+  origin: ["http://localhost:5173"],
+})
+
 // Plugins
 app.register(requestIdPlugin)
 app.register(rateLimitPlugin)
 app.register(jwtPlugin)
 
 // Wait for plugins to load, then declare routes
-app.after(() => {
+  app.after(() => {
   app.decorate("authenticate", authenticate)
 
   // Health checks
@@ -89,6 +95,7 @@ app.after(() => {
   app.register(telegramAvailabilityRoutes, { prefix: "/telegram" })
   app.register(telegramMastersRoutes, { prefix: "/telegram" })
   app.register(telegramServicesRoutes, { prefix: "/telegram" })
+  app.register(catalogRoutes, { prefix: "/catalog" })
 
   // Protected routes
   app.register(userRoutes, { prefix: "/users" })

@@ -15,17 +15,18 @@ datasource db {
 }
 
 model Location {
-  id        String   @id @default(uuid())
-  name      String
-  address   String
-  timezone  String
+  id       String @id @default(uuid())
+  name     String
+  address  String
+  timezone String
 
   users        User[]
   services     Service[]
   packages     Package[]
   workingHours WorkingHour[]
   appointments Appointment[]
-  exceptions   Exception[] @relation("LocationExceptions")
+  exceptions   Exception[]   @relation("LocationExceptions")
+  catalogItems CatalogItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -33,23 +34,23 @@ model Location {
 
 // UserState: "IDLE" | "CONSULTING" | "BOOKING_FLOW" | "BOOKED"
 model User {
-  id       String   @id @default(uuid())
-  name     String
-  email    String   @unique
-  password String
-  role       String   @default("CLIENT")
-  state      String   @default("IDLE")
-  telegramId String?  @unique
+  id         String  @id @default(uuid())
+  name       String
+  email      String  @unique
+  password   String
+  role       String  @default("CLIENT")
+  state      String  @default("IDLE")
+  telegramId String? @unique
 
   locationId String?
   location   Location? @relation(fields: [locationId], references: [id])
 
-  clientAppointments Appointment[] @relation("ClientAppointments")
-  masterAppointments Appointment[] @relation("MasterAppointments")
+  clientAppointments Appointment[]   @relation("ClientAppointments")
+  masterAppointments Appointment[]   @relation("MasterAppointments")
   masterServices     MasterService[]
 
   exceptions Exception[] @relation("UserExceptions")
-  bookings    Booking[]
+  bookings   Booking[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -69,6 +70,7 @@ model Service {
   packageLinks     PackageService[]
   appointmentLinks AppointmentService[]
   masterLinks      MasterService[]
+  catalogItems     CatalogItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -123,10 +125,10 @@ model Appointment {
   id String @id @default(uuid())
 
   clientId String
-  client   User @relation("ClientAppointments", fields: [clientId], references: [id])
+  client   User   @relation("ClientAppointments", fields: [clientId], references: [id])
 
   masterId String
-  master   User @relation("MasterAppointments", fields: [masterId], references: [id])
+  master   User   @relation("MasterAppointments", fields: [masterId], references: [id])
 
   locationId String
   location   Location @relation(fields: [locationId], references: [id])
@@ -134,7 +136,7 @@ model Appointment {
   startAt DateTime
   endAt   DateTime
 
-  status String            @default("PENDING")
+  status String @default("PENDING")
 
   services AppointmentService[]
   noShow   NoShow?
@@ -182,7 +184,7 @@ model Exception {
   id String @id @default(uuid())
 
   masterId String?
-  master   User? @relation("UserExceptions", fields: [masterId], references: [id])
+  master   User?   @relation("UserExceptions", fields: [masterId], references: [id])
 
   locationId String?
   location   Location? @relation("LocationExceptions", fields: [locationId], references: [id])
@@ -203,7 +205,7 @@ model Exception {
 model NoShow {
   id String @id @default(uuid())
 
-  appointmentId String @unique
+  appointmentId String      @unique
   appointment   Appointment @relation(fields: [appointmentId], references: [id])
 
   createdAt DateTime @default(now())
@@ -217,16 +219,16 @@ enum BookingStatus {
 }
 
 model Booking {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  serviceId  String?
-  masterId   String?
-  locationId String?
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  serviceId   String?
+  masterId    String?
+  locationId  String?
   scheduledAt DateTime?
-  status     BookingStatus @default(PENDING)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  status      BookingStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
   confirmedAt DateTime?
   cancelledAt DateTime?
   completedAt DateTime?
@@ -236,4 +238,56 @@ model Booking {
   @@index([status])
   @@index([scheduledAt])
   @@index([expiresAt])
+}
+
+enum CatalogCategory {
+  LASER
+  WAX
+  ELECTRO
+  MASSAGE
+}
+
+enum CatalogItemType {
+  ZONE
+  OFFER
+  INFO
+}
+
+enum CatalogGender {
+  FEMALE
+  MALE
+  UNISEX
+}
+
+model CatalogItem {
+  id String @id @default(uuid())
+
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  category CatalogCategory
+  type     CatalogItemType
+  gender   CatalogGender?
+  groupKey String?
+
+  titleRu       String
+  subtitleRu    String?
+  descriptionRu String?
+
+  price       Int?
+  durationMin Int?
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id])
+
+  isVisible Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId])
+  @@index([locationId, category, isVisible, sortOrder])
+  @@index([locationId, category, groupKey, isVisible, sortOrder])
+  @@index([serviceId])
 }

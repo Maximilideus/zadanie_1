@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client"
 import bcrypt from "bcrypt"
+import { seedCatalogItems } from "./seedCatalogItems"
 
 const prisma = new PrismaClient()
 const SALT_ROUNDS = 12
@@ -136,6 +137,8 @@ async function main() {
     data: masterServiceRows,
     skipDuplicates: true,
   })
+
+  await seedCatalogItems(prisma)
 
   // --- Summary ---
   const mastersCount = MASTERS.length
