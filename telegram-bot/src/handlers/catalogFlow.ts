@@ -83,7 +83,7 @@ export async function showCategorySelection(ctx: Context): Promise<void> {
   const session = getBookingSession(from.id)
   const wiz = session.wizardMessageId
   clearBookingSession(from.id)
-  if (wiz) setBookingSession(from.id, { wizardMessageId: wiz })
+  setBookingSession(from.id, { step: "catalog", wizardMessageId: wiz })
 
   const keyboard = new InlineKeyboard()
   for (const cat of CATEGORY_BUTTONS) {
@@ -302,6 +302,7 @@ export async function reenterCategoryContext(ctx: Context): Promise<void> {
 
   // Reset booking data but preserve catalog navigation context
   const preserved = {
+    step: "catalog" as const,
     wizardMessageId: wiz,
     category: session.category,
     catalogGender: session.catalogGender,

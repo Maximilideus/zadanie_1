@@ -39,7 +39,10 @@ function dateStrInSalonTz(date: Date): string {
   return date.toLocaleDateString("en-CA", { timeZone: SALON_TIMEZONE })
 }
 
+export type WizardStep = "catalog" | "master" | "date" | "time" | "confirm"
+
 export interface BookingSession {
+  step?: WizardStep
   category?: string
   serviceId?: string
   masterId?: string
@@ -257,6 +260,7 @@ export async function startWizardWithService(
   const text = introText + "\n\nВыберите мастера:"
   const sent = await ctx.reply(text, { reply_markup: keyboard })
   setBookingSession(from.id, {
+    step: "master",
     wizardMessageId: { chatId: sent.chat.id, messageId: sent.message_id },
   })
 }
@@ -337,6 +341,7 @@ export async function onServiceChosen(ctx: Context, serviceId: string): Promise<
       keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
       if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
     }
+    setBookingSession(telegramId, { step: "master" })
     const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите мастера:"
     await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
   } catch (e) {
@@ -361,6 +366,7 @@ export async function onMasterChosen(ctx: Context, masterId: string): Promise<vo
     setBookingSession(telegramId, {
       masterId,
       masterName: master ? formatMasterDisplayName(master) : "—",
+      step: "date",
     })
     console.log("[wizard] step: master chosen", masterId)
 
@@ -396,6 +402,7 @@ export async function onDayChosen(ctx: Context, dateStr: string): Promise<void> 
 
     const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
     if (slots.length === 0) {
+      setBookingSession(telegramId, { step: "date" })
       const days = getNext14Days()
       const keyboard = new InlineKeyboard()
       for (let i = 0; i < days.length; i++) {
@@ -410,6 +417,7 @@ export async function onDayChosen(ctx: Context, dateStr: string): Promise<void> 
       return
     }
 
+    setBookingSession(telegramId, { step: "time" })
     const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < toShow.length; i++) {
@@ -496,6 +504,7 @@ export async function onDateEntered(
   const session = getBookingSession(telegramId)
   const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
   if (slots.length === 0) {
+    setBookingSession(telegramId, { step: "date" })
     const days = getNext14Days()
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
@@ -510,6 +519,7 @@ export async function onDateEntered(
     return
   }
 
+  setBookingSession(telegramId, { step: "time" })
   const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
   const keyboard = new InlineKeyboard()
   for (let i = 0; i < toShow.length; i++) {
@@ -537,6 +547,7 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
   try {
     const timeStr = formatBookingTime(scheduledAtIso)
     setBookingSession(telegramId, {
+      step: "confirm",
       timeStr,
       scheduledAtIso,
       confirm: { ...EMPTY_CONFIRM_STATE },
@@ -680,6 +691,7 @@ async function showTimeSelection(
 ): Promise<void> {
   const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
   if (slots.length === 0) {
+    setBookingSession(telegramId, { step: "date" })
     const days = getNext14Days()
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
@@ -692,6 +704,7 @@ async function showTimeSelection(
     await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
     return
   }
+  setBookingSession(telegramId, { step: "time" })
   const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
   const keyboard = new InlineKeyboard()
   for (let i = 0; i < toShow.length; i++) {
@@ -722,6 +735,7 @@ export async function onEditDate(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
   setBookingSession(telegramId, {
+    step: "date",
     timeStr: undefined,
     scheduledAtIso: undefined,
     dateStr: undefined,
@@ -761,6 +775,7 @@ export async function onEditMaster(ctx: Context): Promise<void> {
     keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
     if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
   }
+  setBookingSession(telegramId, { step: "master" })
   const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите мастера:"
   await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
 }
@@ -793,7 +808,7 @@ export async function onTimeBack(ctx: Context): Promise<void> {
   const { masterId } = session
   if (!masterId) return
   try {
-    setBookingSession(telegramId, { timeStr: undefined })
+    setBookingSession(telegramId, { step: "date", timeStr: undefined })
     const days = getNext14Days()
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
@@ -842,4 +857,15 @@ async function handleBackendError(
 
 export function isDateString(text: string): boolean {
   return DATE_REGEX.test(text)
+}
+
+const STALE_MSG = "Этот экран устарел. Открою актуальный шаг."
+
+export function isStaleWizardCallback(telegramId: number, expected: WizardStep): boolean {
+  const session = getBookingSession(telegramId)
+  return session.step !== expected
+}
+
+export async function handleStaleCallback(ctx: Context): Promise<void> {
+  await ctx.answerCallbackQuery({ text: STALE_MSG, show_alert: false }).catch(() => {})
 }

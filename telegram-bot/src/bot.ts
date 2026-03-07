@@ -23,6 +23,8 @@ import {
   clearBookingSession,
   startWizardWithService,
   isDateString,
+  isStaleWizardCallback,
+  handleStaleCallback,
 } from "./handlers/bookingFlow.js"
 import {
   showCategorySelection,
@@ -360,6 +362,10 @@ bot.command("cancel", async (ctx) => {
 
 bot.callbackQuery(/^cat:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onCategoryChosen(ctx, ctx.match[1] as "laser" | "wax" | "electro" | "massage")
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -370,6 +376,10 @@ bot.callbackQuery(/^cat:(.+)$/, async (ctx) => {
 
 bot.callbackQuery("cat_back", async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await showCategorySelection(ctx)
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -380,6 +390,10 @@ bot.callbackQuery("cat_back", async (ctx) => {
 
 bot.callbackQuery(/^gender:(.+):(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onGenderChosen(ctx, ctx.match[1] as "laser" | "wax" | "electro" | "massage", ctx.match[2])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -390,6 +404,10 @@ bot.callbackQuery(/^gender:(.+):(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^zgrp:(.+):(.+):(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onZoneGroupChosen(ctx, ctx.match[1] as "laser" | "wax" | "electro" | "massage", ctx.match[2], ctx.match[3])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -400,6 +418,10 @@ bot.callbackQuery(/^zgrp:(.+):(.+):(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^ci:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onCatalogItemChosen(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -410,6 +432,10 @@ bot.callbackQuery(/^ci:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^ezone:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onElectroZoneGroupChosen(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -420,6 +446,10 @@ bot.callbackQuery(/^ezone:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^eselzone:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onElectroZoneSelected(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -430,6 +460,10 @@ bot.callbackQuery(/^eselzone:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^einfo:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onElectroInfoChosen(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -440,6 +474,10 @@ bot.callbackQuery(/^einfo:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^consult:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "catalog")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onConsultationChosen(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -452,6 +490,10 @@ bot.callbackQuery(/^consult:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^day:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "date")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onDayChosen(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -482,6 +524,10 @@ bot.callbackQuery(/^svc:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^mst:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "master")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onMasterChosen(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -492,6 +538,10 @@ bot.callbackQuery(/^mst:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^t:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "time")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onTimeSlotChosen(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -502,6 +552,10 @@ bot.callbackQuery(/^t:(.+)$/, async (ctx) => {
 
 bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
   try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "confirm")) {
+      await handleStaleCallback(ctx)
+      return
+    }
     await onConfirmBooking(ctx, ctx.match[1])
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
