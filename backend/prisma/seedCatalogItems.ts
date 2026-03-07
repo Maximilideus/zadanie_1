@@ -740,6 +740,47 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       price: 5200,
       durationMin: 120,
     }),
+    // MASSAGE
+    row({
+      category: CatalogCategory.MASSAGE,
+      type: CatalogItemType.OFFER,
+      gender: CatalogGender.UNISEX,
+      groupKey: "massage",
+      titleRu: "Классический массаж",
+      subtitleRu: "60 мин",
+      price: 2000,
+      durationMin: 60,
+    }),
+    row({
+      category: CatalogCategory.MASSAGE,
+      type: CatalogItemType.OFFER,
+      gender: CatalogGender.UNISEX,
+      groupKey: "massage",
+      titleRu: "Расслабляющий массаж",
+      subtitleRu: "60 мин",
+      price: 2000,
+      durationMin: 60,
+    }),
+    row({
+      category: CatalogCategory.MASSAGE,
+      type: CatalogItemType.OFFER,
+      gender: CatalogGender.UNISEX,
+      groupKey: "massage",
+      titleRu: "Спортивный массаж",
+      subtitleRu: "60 мин",
+      price: 2200,
+      durationMin: 60,
+    }),
+    row({
+      category: CatalogCategory.MASSAGE,
+      type: CatalogItemType.OFFER,
+      gender: CatalogGender.UNISEX,
+      groupKey: "massage",
+      titleRu: "Лимфодренажный массаж",
+      subtitleRu: "60 мин",
+      price: 2200,
+      durationMin: 60,
+    }),
   ]
 
   await prisma.catalogItem.createMany({ data: items })
