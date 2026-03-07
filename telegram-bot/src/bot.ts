@@ -186,13 +186,14 @@ bot.callbackQuery("main_bookings", async (ctx) => {
     const telegramId = String(ctx.from.id)
     const bookings = await getUpcomingBookings(telegramId)
     if (bookings.length === 0) {
-      await ctx.editMessageText("У вас пока нет записей.", {
+      await ctx.editMessageText(EMPTY_BOOKINGS_TEXT, {
         reply_markup: new InlineKeyboard().text("◀️ Назад", "main_back"),
       })
       await ctx.answerCallbackQuery().catch(() => {})
       return
     }
     const { text, keyboard } = buildBookingListMessage(bookings)
+    keyboard.row().text("◀️ Назад", "main_back")
     await ctx.editMessageText(text, { reply_markup: keyboard })
     await ctx.answerCallbackQuery().catch(() => {})
   } catch {
@@ -293,27 +294,39 @@ bot.command("book", async (ctx) => {
 })
 
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: "ожидает подтверждения",
-  CONFIRMED: "подтверждена",
+  PENDING: "⏳ ожидает подтверждения",
+  CONFIRMED: "✅ подтверждена",
 }
 
+const EMPTY_BOOKINGS_TEXT =
+  "📭 У вас пока нет ближайших записей.\n\n" +
+  "Когда будете готовы — нажмите /book"
+
 function buildBookingListMessage(bookings: Awaited<ReturnType<typeof getUpcomingBookings>>) {
-  const lines = ["Ваши ближайшие записи:", ""]
+  const lines = ["📋 Ваши ближайшие записи"]
+
   bookings.forEach((b, i) => {
     const serviceDisplay = formatServiceDisplayName(b.service)
     const masterDisplay = formatMasterDisplayName(b.masterName)
-    lines.push(`${i + 1}) ${serviceDisplay}`)
-    lines.push(`Мастер: ${masterDisplay}`)
-    lines.push(`Дата: ${formatBookingDate(b.scheduledAt)}`)
-    lines.push(`Время: ${formatBookingTime(b.scheduledAt)}`)
-    lines.push(`Статус: ${STATUS_LABELS[b.status] ?? b.status}`)
+    const duration = b.service.durationMin ? ` — ${b.service.durationMin} мин` : ""
+    const status = STATUS_LABELS[b.status] ?? b.status
+
     lines.push("")
+    lines.push(`━━━━━━━━━━━━━━━━━━━━`)
+    lines.push(`📅 Запись #${i + 1}`)
+    lines.push("")
+    lines.push(`    Услуга: ${serviceDisplay}${duration}`)
+    lines.push(`    Мастер: ${masterDisplay}`)
+    lines.push(`    Дата: ${formatBookingDate(b.scheduledAt)}`)
+    lines.push(`    Время: ${formatBookingTime(b.scheduledAt)}`)
+    lines.push(`    Статус: ${status}`)
   })
+
   const keyboard = new InlineKeyboard()
   bookings.forEach((b, i) => {
     keyboard.text(`❌ Отменить запись ${i + 1}`, `cancel_bk:${b.id}`).row()
   })
-  return { text: lines.join("\n").trim(), keyboard }
+  return { text: lines.join("\n"), keyboard }
 }
 
 bot.command("my_bookings", async (ctx) => {
@@ -326,7 +339,7 @@ bot.command("my_bookings", async (ctx) => {
     const bookings = await getUpcomingBookings(telegramId)
 
     if (bookings.length === 0) {
-      await ctx.reply("У вас пока нет записей.")
+      await ctx.reply(EMPTY_BOOKINGS_TEXT)
       return
     }
 
@@ -695,7 +708,7 @@ bot.callbackQuery("cancel_bk_no", async (ctx) => {
     const telegramId = String(ctx.from.id)
     const bookings = await getUpcomingBookings(telegramId)
     if (bookings.length === 0) {
-      await ctx.editMessageText("У вас пока нет записей.")
+      await ctx.editMessageText(EMPTY_BOOKINGS_TEXT)
       await ctx.answerCallbackQuery().catch(() => {})
       return
     }
