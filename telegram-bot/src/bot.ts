@@ -1,6 +1,6 @@
 import "dotenv/config"
 import { Bot } from "grammy"
-import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, cancelBookingById } from "./api/backend.client.js"
+import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, hasActiveBooking, cancelBookingById } from "./api/backend.client.js"
 import { InlineKeyboard } from "grammy"
 import { formatServiceDisplayName, formatBookingDate, formatBookingTime, formatMasterDisplayName } from "./services/formatters.js"
 import { stateRouter } from "./router/state.router.js"
@@ -24,8 +24,31 @@ import {
   startWizardWithService,
   isDateString,
 } from "./handlers/bookingFlow.js"
+import {
+  showCategorySelection,
+  onCategoryChosen,
+  onGenderChosen,
+  onZoneGroupChosen,
+  onCatalogItemChosen,
+  onElectroZoneGroupChosen,
+  onElectroZoneSelected,
+  onElectroInfoChosen,
+  onConsultationChosen,
+} from "./handlers/catalogFlow.js"
 
 const UNAVAILABLE = "Сервис временно недоступен. Попробуйте позже."
+
+const ACTIVE_BOOKING_BLOCKED =
+  "У вас уже есть активная запись.\n" +
+  "Сначала отмените текущую запись или дождитесь её завершения.\n\n" +
+  "Посмотреть и отменить запись можно в разделе «Мои записи»."
+
+function activeBookingBlockedKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📋 Мои записи", "main_bookings")
+    .row()
+    .text("💬 Консультация", "main_consult")
+}
 
 const token = process.env.BOT_TOKEN
 if (!token) {
@@ -47,6 +70,15 @@ bot.catch(async (err) => {
     // ignore
   }
 })
+
+function buildMainMenuKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📅 Записаться", "main_book")
+    .row()
+    .text("💬 Консультация", "main_consult")
+    .row()
+    .text("📋 Мои записи", "main_bookings")
+}
 
 bot.command("start", async (ctx) => {
   const from = ctx.from
@@ -80,6 +112,11 @@ bot.command("start", async (ctx) => {
         return
       }
 
+      if (await hasActiveBooking(telegramId)) {
+        await ctx.reply(ACTIVE_BOOKING_BLOCKED, { reply_markup: activeBookingBlockedKeyboard() })
+        return
+      }
+
       try {
         await updateTelegramState(telegramId, "BOOKING_FLOW")
       } catch {
@@ -105,10 +142,72 @@ bot.command("start", async (ctx) => {
       return
     }
 
-    const { state } = await telegramAuth(telegramId, name)
-    await stateRouter(ctx, state)
+    await ctx.reply(
+      `Добро пожаловать${name ? `, ${name}` : ""}! Чем могу помочь?`,
+      { reply_markup: buildMainMenuKeyboard() },
+    )
   } catch {
     await ctx.reply(UNAVAILABLE)
+  }
+})
+
+bot.callbackQuery("main_book", async (ctx) => {
+  try {
+    const telegramId = String(ctx.from.id)
+    if (await hasActiveBooking(telegramId)) {
+      await ctx.editMessageText(ACTIVE_BOOKING_BLOCKED, { reply_markup: activeBookingBlockedKeyboard() })
+      await ctx.answerCallbackQuery().catch(() => {})
+      return
+    }
+    await showCategorySelection(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch {
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("main_consult", async (ctx) => {
+  try {
+    const telegramId = String(ctx.from.id)
+    try {
+      await updateTelegramState(telegramId, "CONSULTING")
+    } catch { /* best-effort */ }
+    await stateRouter(ctx, "CONSULTING")
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch {
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("main_bookings", async (ctx) => {
+  try {
+    const telegramId = String(ctx.from.id)
+    const bookings = await getUpcomingBookings(telegramId)
+    if (bookings.length === 0) {
+      await ctx.editMessageText("У вас пока нет записей.", {
+        reply_markup: new InlineKeyboard().text("◀️ Назад", "main_back"),
+      })
+      await ctx.answerCallbackQuery().catch(() => {})
+      return
+    }
+    const { text, keyboard } = buildBookingListMessage(bookings)
+    await ctx.editMessageText(text, { reply_markup: keyboard })
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch {
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("main_back", async (ctx) => {
+  try {
+    const name = ctx.from.first_name ?? undefined
+    await ctx.editMessageText(
+      `Добро пожаловать${name ? `, ${name}` : ""}! Чем могу помочь?`,
+      { reply_markup: buildMainMenuKeyboard() },
+    )
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch {
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
   }
 })
 
@@ -167,6 +266,11 @@ bot.command("book", async (ctx) => {
   const telegramId = String(from.id)
 
   try {
+    if (await hasActiveBooking(telegramId)) {
+      await ctx.reply(ACTIVE_BOOKING_BLOCKED, { reply_markup: activeBookingBlockedKeyboard() })
+      return
+    }
+
     const { state } = await telegramAuth(telegramId)
     if (state === "CONSULTING") {
       try {
@@ -180,7 +284,7 @@ bot.command("book", async (ctx) => {
         throw e
       }
     }
-    await stateRouter(ctx, "BOOKING_FLOW")
+    await showCategorySelection(ctx)
   } catch (e) {
     await ctx.reply(UNAVAILABLE)
   }
@@ -251,6 +355,100 @@ bot.command("cancel", async (ctx) => {
     await ctx.reply(UNAVAILABLE)
   }
 })
+
+// ── Catalog flow callbacks ───────────────────────────────────────────
+
+bot.callbackQuery(/^cat:(.+)$/, async (ctx) => {
+  try {
+    await onCategoryChosen(ctx, ctx.match[1] as "laser" | "wax" | "electro" | "massage")
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] category callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("cat_back", async (ctx) => {
+  try {
+    await showCategorySelection(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] cat_back callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^gender:(.+):(.+)$/, async (ctx) => {
+  try {
+    await onGenderChosen(ctx, ctx.match[1] as "laser" | "wax" | "electro" | "massage", ctx.match[2])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] gender callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^zgrp:(.+):(.+):(.+)$/, async (ctx) => {
+  try {
+    await onZoneGroupChosen(ctx, ctx.match[1] as "laser" | "wax" | "electro" | "massage", ctx.match[2], ctx.match[3])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] zone group callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^ci:(.+)$/, async (ctx) => {
+  try {
+    await onCatalogItemChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] item callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^ezone:(.+)$/, async (ctx) => {
+  try {
+    await onElectroZoneGroupChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] electro zone callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^eselzone:(.+)$/, async (ctx) => {
+  try {
+    await onElectroZoneSelected(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] electro zone select callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^einfo:(.+)$/, async (ctx) => {
+  try {
+    await onElectroInfoChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] electro info callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^consult:(.+)$/, async (ctx) => {
+  try {
+    await onConsultationChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[catalog] consult callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+// ── Booking wizard callbacks ────────────────────────────────────────
 
 bot.callbackQuery(/^day:(.+)$/, async (ctx) => {
   try {

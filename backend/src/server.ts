@@ -88,10 +88,14 @@ app.register(jwtPlugin)
     }
   })
 
-  if (env.NODE_ENV === "development") {
-    app.post("/debug/reminders/run", async (_request, reply) => {
-      await runBookingRemindersOnce(app.log)
-      return reply.send({ ok: true })
+  if (env.NODE_ENV !== "production") {
+    app.post("/dev/jobs/reminders/run", async (_request, reply) => {
+      const result = await runBookingRemindersOnce(app.log)
+      return reply.send({
+        ok: true,
+        message: "Reminder dispatch completed",
+        ...result,
+      })
     })
   }
 

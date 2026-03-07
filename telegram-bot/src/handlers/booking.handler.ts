@@ -1,7 +1,7 @@
 import type { Context } from "grammy"
-import { startWizard } from "./bookingFlow.js"
+import { showCategorySelection } from "./catalogFlow.js"
 
 /** Single editable wizard message; no extra reply. */
 export async function bookingHandler(ctx: Context): Promise<void> {
-  await startWizard(ctx)
+  await showCategorySelection(ctx)
 }

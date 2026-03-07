@@ -59,9 +59,14 @@ function resolveTargetServiceName(item: CatalogRow): string | null {
       return durationMin != null ? resolveWaxServiceName(durationMin) : null
 
     case CatalogCategory.ELECTRO:
-      if (type !== CatalogItemType.OFFER || groupKey !== "time") return null
-      if (durationMin == null) return null
-      return ELECTRO_DURATION_MAP[durationMin] ?? null
+      if (type === CatalogItemType.OFFER && groupKey === "time") {
+        if (durationMin == null) return null
+        return ELECTRO_DURATION_MAP[durationMin] ?? null
+      }
+      if (groupKey === "face" || groupKey === "body") {
+        return "Electro 15 min"
+      }
+      return null
 
     case CatalogCategory.MASSAGE:
       for (const [pattern, serviceName] of MASSAGE_TITLE_MAP) {

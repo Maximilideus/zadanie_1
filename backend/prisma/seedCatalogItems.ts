@@ -576,7 +576,7 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       price: 3500,
       durationMin: 20,
     }),
-    // ELECTRO INFO face
+    // ELECTRO face zones (bookable, default 15 min session)
     row({
       category: CatalogCategory.ELECTRO,
       type: CatalogItemType.INFO,
@@ -584,8 +584,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "face",
       titleRu: "Верхняя губа",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     row({
       category: CatalogCategory.ELECTRO,
@@ -594,8 +594,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "face",
       titleRu: "Подбородок",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     row({
       category: CatalogCategory.ELECTRO,
@@ -604,8 +604,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "face",
       titleRu: "Щёки / скулы",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     row({
       category: CatalogCategory.ELECTRO,
@@ -614,8 +614,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "face",
       titleRu: "Брови",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     row({
       category: CatalogCategory.ELECTRO,
@@ -624,10 +624,10 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "face",
       titleRu: "Шея",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
-    // ELECTRO INFO body
+    // ELECTRO body zones (bookable, default 15 min session)
     row({
       category: CatalogCategory.ELECTRO,
       type: CatalogItemType.INFO,
@@ -635,8 +635,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "body",
       titleRu: "Ареолы",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     row({
       category: CatalogCategory.ELECTRO,
@@ -645,8 +645,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "body",
       titleRu: "Белая линия живота",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     row({
       category: CatalogCategory.ELECTRO,
@@ -655,8 +655,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "body",
       titleRu: "Пальцы рук / ног",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     row({
       category: CatalogCategory.ELECTRO,
@@ -665,8 +665,8 @@ export async function seedCatalogItems(prisma: PrismaClient) {
       groupKey: "body",
       titleRu: "Единичные волосы",
       subtitleRu: null,
-      price: null,
-      durationMin: null,
+      price: 900,
+      durationMin: 15,
     }),
     // ELECTRO INFO other
     row({

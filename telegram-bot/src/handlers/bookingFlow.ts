@@ -51,6 +51,9 @@ export interface BookingSession {
   durationMin?: number
   price?: number
   catalogTitle?: string
+  catalogGender?: string
+  catalogGroupKey?: string
+  catalogElectroZone?: string
   wizardMessageId?: { chatId: number; messageId: number }
   awaitingDate?: boolean
   confirm?: ConfirmState
@@ -209,20 +212,31 @@ export async function startWizardWithService(
   serviceName: string,
   durationMin: number | undefined,
   introText: string,
-  extra?: { price?: number; catalogTitle?: string; category?: string },
+  extra?: {
+    price?: number
+    catalogTitle?: string
+    category?: string
+    catalogGender?: string
+    catalogGroupKey?: string
+    catalogElectroZone?: string
+  },
 ): Promise<void> {
   const from = ctx.from
   if (!from) return
 
+  const prev = getBookingSession(from.id)
   clearBookingSession(from.id)
 
   setBookingSession(from.id, {
-    category: extra?.category ?? undefined,
+    category: extra?.category ?? prev.category,
     serviceId,
     serviceName,
     durationMin,
     price: extra?.price ?? undefined,
     catalogTitle: extra?.catalogTitle ?? undefined,
+    catalogGender: extra?.catalogGender ?? prev.catalogGender,
+    catalogGroupKey: extra?.catalogGroupKey ?? prev.catalogGroupKey,
+    catalogElectroZone: extra?.catalogElectroZone ?? prev.catalogElectroZone,
   })
 
   const masters = await getMasters(serviceId)
@@ -544,6 +558,7 @@ function buildConfirmText(session: BookingSession): string {
 
   const lines = ["Проверьте запись\n", `Услуга: ${service}`]
   if (session.catalogTitle) lines.push(session.catalogTitle)
+  if (session.catalogElectroZone) lines.push(`Зона: ${session.catalogElectroZone}`)
   lines.push("")
   lines.push(`Мастер: ${master}`)
   lines.push(`Дата: ${date}`)
@@ -552,6 +567,9 @@ function buildConfirmText(session: BookingSession): string {
   if (session.price != null) lines.push(`Цена: ${session.price} ₽`)
   lines.push("")
   lines.push("Запись будет создана со статусом ожидания подтверждения.")
+  lines.push("")
+  lines.push("После подтверждения изменить запись нельзя.")
+  lines.push("Если понадобится другой вариант, текущую запись нужно будет отменить и оформить заново.")
   return lines.join("\n")
 }
 
@@ -750,16 +768,9 @@ export async function onEditMaster(ctx: Context): Promise<void> {
 export async function onChooseAnotherService(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
-  const { category } = getBookingSession(telegramId)
-  setBookingSession(telegramId, {
-    serviceId: undefined, serviceName: undefined, durationMin: undefined,
-    price: undefined, catalogTitle: undefined,
-    masterId: undefined, masterName: undefined,
-    dateStr: undefined, timeStr: undefined,
-    scheduledAtIso: undefined,
-    confirm: { ...EMPTY_CONFIRM_STATE },
-  })
-  await showServiceList(ctx, category)
+  // Dynamically import to avoid circular dependency
+  const { reenterCategoryContext } = await import("./catalogFlow.js")
+  await reenterCategoryContext(ctx)
 }
 
 export async function onCancelFlow(ctx: Context): Promise<void> {

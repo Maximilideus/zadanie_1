@@ -101,10 +101,19 @@ function buildReminderText(
   return lines.join("\n")
 }
 
-async function processReminders(log: ReminderJobLogger): Promise<void> {
+export interface ReminderRunResult {
+  found: number
+  sent: number
+  skipped: number
+  failed: number
+}
+
+async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResult> {
+  const result: ReminderRunResult = { found: 0, sent: 0, skipped: 0, failed: 0 }
+
   if (running) {
     log.info({}, "Reminder tick skipped (previous still running)")
-    return
+    return result
   }
   running = true
   try {
@@ -129,14 +138,16 @@ async function processReminders(log: ReminderJobLogger): Promise<void> {
       select: bookingWithDetailsSelect,
     })
 
+    result.found = dueBookings.length
     log.info({ count: dueBookings.length }, "Due bookings found")
 
-    if (dueBookings.length === 0) return
+    if (dueBookings.length === 0) return result
 
     for (const booking of dueBookings) {
       const telegramId = booking.user.telegramId
       if (!telegramId || !booking.scheduledAt || !booking.serviceId || !booking.masterId) {
         log.info({ bookingId: booking.id, reason: "missing telegramId/scheduledAt/service/master" }, "Booking skipped")
+        result.skipped++
         continue
       }
 
@@ -163,7 +174,50 @@ async function processReminders(log: ReminderJobLogger): Promise<void> {
         booking.masterId,
       )
 
-      if (needs10h) {
+      if (needs2h) {
+        const reserved = await prisma.booking.updateMany({
+          where: { id: booking.id, reminder2hSentAt: null },
+          data: { reminder2hSentAt: new Date() },
+        })
+        if (reserved.count === 0) {
+          log.info({ bookingId: booking.id, type: "2h" }, "Reminder already reserved by another tick")
+          result.skipped++
+          continue
+        }
+
+        const text = buildReminderText(
+          "Напоминаем: до вашей записи осталось около 2 часов.",
+          serviceName,
+          masterName,
+          scheduledAt,
+          booking.status,
+          "Ждём вас.",
+        )
+
+        const ok = await sendTelegramMessage({ chat_id: telegramId, text })
+
+        if (ok) {
+          log.info({ bookingId: booking.id, type: "2h" }, "Reminder sent OK")
+          result.sent++
+        } else {
+          await prisma.booking.update({
+            where: { id: booking.id },
+            data: { reminder2hSentAt: null },
+          })
+          log.info({ bookingId: booking.id, type: "2h" }, "Reminder send FAILED, reservation rolled back")
+          result.failed++
+        }
+      } else if (needs10h) {
+        const reserved = await prisma.booking.updateMany({
+          where: { id: booking.id, reminder10hSentAt: null },
+          data: { reminder10hSentAt: new Date() },
+        })
+        if (reserved.count === 0) {
+          log.info({ bookingId: booking.id, type: "10h" }, "Reminder already reserved by another tick")
+          result.skipped++
+          continue
+        }
+
         const canCancel = remainingMs > CANCEL_CUTOFF_MS
         const cancelKeyboard: InlineButton[][] | undefined = canCancel
           ? [[{ text: "Отменить запись", callback_data: `cancel_bk:${booking.id}` }]]
@@ -182,56 +236,43 @@ async function processReminders(log: ReminderJobLogger): Promise<void> {
           outro,
         )
 
-        const sent = await sendTelegramMessage({
+        const ok = await sendTelegramMessage({
           chat_id: telegramId,
           text,
           reply_markup: cancelKeyboard ? { inline_keyboard: cancelKeyboard } : undefined,
         })
 
-        if (sent) {
-          await prisma.booking.update({
-            where: { id: booking.id },
-            data: { reminder10hSentAt: new Date() },
-          })
+        if (ok) {
           log.info({ bookingId: booking.id, type: "10h", canCancel }, "Reminder sent OK")
+          result.sent++
         } else {
-          log.info({ bookingId: booking.id, type: "10h" }, "Reminder send FAILED")
-        }
-      }
-
-      if (needs2h) {
-        const text = buildReminderText(
-          "Напоминаем: до вашей записи осталось около 2 часов.",
-          serviceName,
-          masterName,
-          scheduledAt,
-          booking.status,
-          "Ждём вас.",
-        )
-
-        const sent = await sendTelegramMessage({ chat_id: telegramId, text })
-
-        if (sent) {
           await prisma.booking.update({
             where: { id: booking.id },
-            data: { reminder2hSentAt: new Date() },
+            data: { reminder10hSentAt: null },
           })
-          log.info({ bookingId: booking.id, type: "2h" }, "Reminder sent OK")
-        } else {
-          log.info({ bookingId: booking.id, type: "2h" }, "Reminder send FAILED")
+          log.info({ bookingId: booking.id, type: "10h" }, "Reminder send FAILED, reservation rolled back")
+          result.failed++
         }
       }
     }
+
+    log.info(result, "Reminder tick finished")
+    return result
   } catch (e) {
     log.info({ err: e }, "Reminder job error")
+    return result
   } finally {
     running = false
   }
 }
 
 /** Run one reminder dispatch cycle immediately. Useful for local testing. */
-export async function runBookingRemindersOnce(log?: ReminderJobLogger): Promise<void> {
-  await processReminders(log ?? consoleLogger)
+export async function runBookingRemindersOnce(log?: ReminderJobLogger): Promise<ReminderRunResult> {
+  const l = log ?? consoleLogger
+  l.info({}, "Manual reminder run started")
+  const result = await processReminders(l)
+  l.info(result, "Manual reminder run finished")
+  return result
 }
 
 export function startBookingRemindersJob(log: ReminderJobLogger): NodeJS.Timeout | null {

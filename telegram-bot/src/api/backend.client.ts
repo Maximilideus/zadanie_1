@@ -96,6 +96,13 @@ export async function getUpcomingBookings(
   return (await res.json()) as UpcomingBookingItem[]
 }
 
+const ACTIVE_STATUSES = new Set(["PENDING", "CONFIRMED"])
+
+export async function hasActiveBooking(telegramId: string): Promise<boolean> {
+  const bookings = await getUpcomingBookings(telegramId)
+  return bookings.some((b) => ACTIVE_STATUSES.has(b.status))
+}
+
 export interface CreateTelegramBookingResponse {
   id: string
   userId: string
@@ -265,6 +272,40 @@ export async function setBookingTime(
   })
   if (!res.ok) return parseError(res)
   return (await res.json()) as BookingUpdateResponse
+}
+
+// ── Catalog grouped API ──────────────────────────────────────────────
+
+export interface CatalogItemDto {
+  id: string
+  type: string
+  gender: string | null
+  groupKey: string | null
+  title: string
+  subtitle: string | null
+  description: string | null
+  price: number | null
+  durationMin: number | null
+}
+
+export interface CatalogGroupSection {
+  title: string
+  items: CatalogItemDto[]
+}
+
+export type CatalogGroupedSections = Record<string, Record<string, CatalogGroupSection>>
+
+export interface CatalogGroupedResponse {
+  category: string
+  sections: CatalogGroupedSections
+}
+
+export async function getCatalogGrouped(
+  categorySlug: string,
+): Promise<CatalogGroupedResponse> {
+  const res = await fetch(`${BACKEND_URL}/catalog/${encodeURIComponent(categorySlug)}/grouped`)
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as CatalogGroupedResponse
 }
 
 export async function cancelBookingById(
