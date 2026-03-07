@@ -1,17 +1,13 @@
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { HomePage } from "./pages/HomePage.jsx";
 import { LaserPage } from "./pages/LaserPage.jsx";
 import { WaxPage } from "./pages/WaxPage.jsx";
 import { ElectroPage } from "./pages/ElectroPage.jsx";
-import { AuthForm } from "./components/AuthForm.jsx";
-import { AdminPanel } from "./components/AdminPanel.jsx";
-import { supabase } from "./supabase.js";
+import { AdminLoginPage } from "./pages/AdminLoginPage.jsx";
+import { AdminBookingsPage } from "./pages/AdminBookingsPage.jsx";
+import { getAdminMe, getAdminToken } from "./api/admin.js";
 
-// ─── Админ: замени на свой email ─────────────────────────────────────────
-const ADMIN_EMAIL = "your-email@example.com";
-
-// ─── Ссылка на Telegram-бота (единая константа для всех кнопок записи) ───
 export const TELEGRAM_BOOK_URL = "https://t.me/my_salon_ai_assistant_bot";
 
 export const MASTERS_DATA = {
@@ -21,58 +17,62 @@ export const MASTERS_DATA = {
   "Дмитрий": { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Dmitry", rating: 4.6, specialization: "Массаж" },
 };
 
+function AdminGuard({ adminUser, children }) {
+  if (!adminUser) return <Navigate to="/admin/login" replace />;
+  return children;
+}
+
 export function App() {
-  const [session, setSession] = useState(undefined);
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
+  const [adminUser, setAdminUser] = useState(null);
+  const [adminChecked, setAdminChecked] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-    return () => subscription.unsubscribe();
+    if (!getAdminToken()) {
+      setAdminChecked(true);
+      return;
+    }
+    getAdminMe()
+      .then((user) => setAdminUser(user))
+      .finally(() => setAdminChecked(true));
   }, []);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setShowAdmin(false);
-    setShowLogin(false);
-  };
+  const handleLoginSuccess = useCallback(() => {
+    getAdminMe().then((user) => setAdminUser(user));
+  }, []);
 
-  if (session === undefined) return null;
+  const handleLogout = useCallback(() => {
+    setAdminUser(null);
+  }, []);
 
-  const isAdmin = session?.user?.email === ADMIN_EMAIL;
-
-  if (showAdmin && isAdmin) {
-    return <AdminPanel session={session} onBack={() => setShowAdmin(false)} onSignOut={handleSignOut} />;
-  }
-
-  if (showLogin && !session) {
-    return <AuthForm onBack={() => setShowLogin(false)} />;
-  }
+  if (!adminChecked) return null;
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route 
-          path="/" 
-          element={
-            <HomePage
-              botUrl={TELEGRAM_BOOK_URL}
-              isAdmin={isAdmin}
-              session={session}
-              onAdminClick={() => setShowAdmin(true)}
-              onLoginClick={() => setShowLogin(true)}
-              onSignOut={handleSignOut}
-            />
-          } 
-        />
+        {/* Public routes */}
+        <Route path="/" element={<HomePage botUrl={TELEGRAM_BOOK_URL} />} />
         <Route path="/laser" element={<LaserPage botUrl={TELEGRAM_BOOK_URL} />} />
         <Route path="/wax" element={<WaxPage botUrl={TELEGRAM_BOOK_URL} />} />
         <Route path="/electro" element={<ElectroPage botUrl={TELEGRAM_BOOK_URL} />} />
+
+        {/* Admin routes */}
+        <Route
+          path="/admin/login"
+          element={
+            adminUser
+              ? <Navigate to="/admin/bookings" replace />
+              : <AdminLoginPage onLoginSuccess={handleLoginSuccess} />
+          }
+        />
+        <Route
+          path="/admin/bookings"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminBookingsPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route path="/admin" element={<Navigate to="/admin/bookings" replace />} />
       </Routes>
     </BrowserRouter>
   );

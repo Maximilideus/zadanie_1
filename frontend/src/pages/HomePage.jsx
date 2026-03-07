@@ -4,28 +4,6 @@ import { MASTERS_DATA } from "../App.jsx";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
 
 // ═══════════════════════════════════════════════════════════════
-// ADMIN BAR
-// ═══════════════════════════════════════════════════════════════
-
-function AdminBar({ isAdmin, session, onAdminClick, onLoginClick, onSignOut }) {
-  if (!isAdmin && session) return null;
-  return (
-    <div className="admin-access-bar">
-      {isAdmin && (
-        <>
-          <span className="admin-bar-email">{session.user.email}</span>
-          <button className="admin-bar-btn" onClick={onAdminClick}>Админ-панель</button>
-          <button className="admin-bar-btn" onClick={onSignOut}>Выйти</button>
-        </>
-      )}
-      {!session && (
-        <button className="admin-bar-btn admin-login-btn" onClick={onLoginClick}>🔑</button>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
 // HERO
 // ═══════════════════════════════════════════════════════════════
 
@@ -762,16 +740,9 @@ function ContactsSection() {
 // ГЛАВНАЯ СТРАНИЦА
 // ═══════════════════════════════════════════════════════════════
 
-export function HomePage({ botUrl, isAdmin, session, onAdminClick, onLoginClick, onSignOut }) {
+export function HomePage({ botUrl }) {
   return (
     <div className="land-root">
-      <AdminBar
-        isAdmin={isAdmin}
-        session={session}
-        onAdminClick={onAdminClick}
-        onLoginClick={onLoginClick}
-        onSignOut={onSignOut}
-      />
       <HeroSection botUrl={botUrl} />
       <WhyUsSection />
       <ServicesSection />
