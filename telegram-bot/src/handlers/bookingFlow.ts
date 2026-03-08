@@ -5,6 +5,7 @@ import {
   getMasters,
   getAvailability,
   getMasterWorkingDays,
+  getMasterBlockedDates,
   setBookingService,
   setBookingMaster,
   setBookingTime,
@@ -165,9 +166,22 @@ function getNext14Days(): { date: string; label: string }[] {
   return out
 }
 
-/** Next dates (up to DATE_DAYS_SHOWN) that fall on the master's working weekdays. */
+/** Next dates (up to DATE_DAYS_SHOWN) that fall on the master's working weekdays and are not blocked. */
 async function getNext14DaysForMaster(masterId: string): Promise<{ date: string; label: string }[]> {
-  const dayOfWeeks = await getMasterWorkingDays(masterId)
+  const [dayOfWeeks, blockedSet] = await Promise.all([
+    getMasterWorkingDays(masterId),
+    (async () => {
+      const todayStr = todayStrInSalonTz()
+      const toD = new Date(todayStr + "T12:00:00Z")
+      toD.setUTCDate(toD.getUTCDate() + DATE_RANGE_DAYS)
+      const toStr = dateStrInSalonTz(toD)
+      const fromStr = new Date(todayStr + "T12:00:00Z")
+      fromStr.setUTCDate(fromStr.getUTCDate() + 1)
+      const from = dateStrInSalonTz(fromStr)
+      const dates = await getMasterBlockedDates(masterId, from, toStr)
+      return new Set(dates)
+    })(),
+  ])
   if (dayOfWeeks.length === 0) return []
   const todayStr = todayStrInSalonTz()
   const candidates: { date: string; label: string }[] = []
@@ -175,6 +189,7 @@ async function getNext14DaysForMaster(masterId: string): Promise<{ date: string;
     const d = new Date(todayStr + "T12:00:00Z")
     d.setUTCDate(d.getUTCDate() + i)
     const date = dateStrInSalonTz(d)
+    if (blockedSet.has(date)) continue
     const wd = getWeekdayInSalonTz(date)
     if (dayOfWeeks.includes(wd)) {
       const label = d.toLocaleDateString("ru-RU", {

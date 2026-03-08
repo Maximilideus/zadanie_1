@@ -201,7 +201,8 @@ model Exception {
   locationId String?
   location   Location? @relation("LocationExceptions", fields: [locationId], references: [id])
 
-  date    DateTime
+  date    DateTime  // start of blocked period (or single day for DAY_OFF)
+  dateTo  DateTime? // end of blocked period (null = single day)
   startAt DateTime?
   endAt   DateTime?
 

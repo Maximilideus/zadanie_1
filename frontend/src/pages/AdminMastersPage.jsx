@@ -100,6 +100,11 @@ export function AdminMastersPage({ adminUser, onLogout }) {
         startTime: wh.startTime || "09:00",
         endTime: wh.endTime || "18:00",
       })),
+      exceptions: (m.exceptions || []).map((e) =>
+        e.dateTo
+          ? { type: "VACATION", dateFrom: e.date, dateTo: e.dateTo }
+          : { type: "DAY_OFF", date: e.date },
+      ),
     });
     setSaveError("");
   };
@@ -120,6 +125,15 @@ export function AdminMastersPage({ adminUser, onLogout }) {
 
     setSaving(true);
     try {
+      const exceptionsPayload = (editDraft.exceptions || [])
+        .filter((ex) =>
+          ex.type === "DAY_OFF" ? ex.date : ex.dateFrom && ex.dateTo && ex.dateFrom <= ex.dateTo,
+        )
+        .map((ex) =>
+          ex.type === "DAY_OFF"
+            ? { type: "DAY_OFF", date: ex.date }
+            : { type: "VACATION", dateFrom: ex.dateFrom, dateTo: ex.dateTo },
+        );
       await updateAdminMaster(editingId, {
         name,
         photoUrl: editDraft.photoUrl.trim() || null,
@@ -133,6 +147,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
           startTime: wh.startTime,
           endTime: wh.endTime,
         })),
+        exceptions: exceptionsPayload,
       });
       setEditingId(null);
       setEditDraft({});
@@ -168,6 +183,24 @@ export function AdminMastersPage({ adminUser, onLogout }) {
       i === index ? { ...row, [field]: value } : row,
     );
     handleDraftChange("workingHours", next);
+  };
+
+  const exceptionsList = editDraft.exceptions || [];
+  const addException = (type) => {
+    if (type === "DAY_OFF") {
+      handleDraftChange("exceptions", [...exceptionsList, { type: "DAY_OFF", date: "" }]);
+    } else {
+      handleDraftChange("exceptions", [...exceptionsList, { type: "VACATION", dateFrom: "", dateTo: "" }]);
+    }
+  };
+  const removeException = (index) => {
+    handleDraftChange("exceptions", exceptionsList.filter((_, i) => i !== index));
+  };
+  const updateException = (index, field, value) => {
+    const next = exceptionsList.map((row, i) =>
+      i === index ? { ...row, [field]: value } : row,
+    );
+    handleDraftChange("exceptions", next);
   };
 
   const handleLogout = () => {
@@ -412,6 +445,62 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                                 </div>
                               </td>
                             </tr>
+                            <tr style={s.trEditing}>
+                              <td colSpan={8} style={s.td}>
+                                <div style={s.workingHoursSection}>
+                                  <p style={s.servicesTitle}>Исключения / выходные</p>
+                                  {exceptionsList.map((ex, idx) => (
+                                    <div key={idx} style={s.workingHourRow}>
+                                      <span style={s.exceptionTypeLabel}>
+                                        {ex.type === "DAY_OFF" ? "День off" : "Отпуск"}
+                                      </span>
+                                      {ex.type === "DAY_OFF" ? (
+                                        <input
+                                          type="date"
+                                          style={{ ...s.input, ...s.timeInput }}
+                                          value={ex.date}
+                                          onChange={(e) => updateException(idx, "date", e.target.value)}
+                                        />
+                                      ) : (
+                                        <>
+                                          <input
+                                            type="date"
+                                            style={{ ...s.input, ...s.timeInput }}
+                                            value={ex.dateFrom}
+                                            onChange={(e) => updateException(idx, "dateFrom", e.target.value)}
+                                            placeholder="Начало"
+                                          />
+                                          <span style={s.timeSep}>–</span>
+                                          <input
+                                            type="date"
+                                            style={{ ...s.input, ...s.timeInput }}
+                                            value={ex.dateTo}
+                                            onChange={(e) => updateException(idx, "dateTo", e.target.value)}
+                                            placeholder="Конец"
+                                          />
+                                        </>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => removeException(idx)}
+                                        style={s.removeRowBtn}
+                                        title="Удалить"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <div style={s.exceptionAddRow}>
+                                    <button type="button" onClick={() => addException("DAY_OFF")} style={s.addRowBtn}>
+                                      День off
+                                    </button>
+                                    <button type="button" onClick={() => addException("VACATION")} style={s.addRowBtn}>
+                                      Отпуск
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
                           </React.Fragment>
                         );
                       }
@@ -611,4 +700,6 @@ const s = {
     marginTop: "4px", padding: "6px 12px", border: "1px dashed #999", borderRadius: "6px",
     background: "#fff", fontSize: "13px", color: "#555", cursor: "pointer",
   },
+  exceptionTypeLabel: { fontSize: "13px", fontWeight: 600, color: "#555", minWidth: "70px" },
+  exceptionAddRow: { display: "flex", gap: "8px", marginTop: "8px" },
 };

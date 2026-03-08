@@ -1,12 +1,26 @@
 import { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
+import { DateTime } from "luxon"
 import { env } from "../../config/env"
+import { SALON_TIMEZONE } from "../../config/salon"
 import { authenticate } from "../../middlewares/auth.middleware"
 import { requireRole } from "../../middlewares/requireRole"
 import { prisma } from "../../lib/prisma"
 import { updateBookingStatus } from "../booking/booking.service"
 import type { BookingStatus } from "../booking/booking.status.machine"
 import { sendBookingStatusNotification } from "../../services/bookingNotifications"
+
+const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/
+function parseSalonDate(dateStr: string): Date {
+  const dt = DateTime.fromISO(dateStr, { zone: SALON_TIMEZONE }).startOf("day")
+  if (!dt.isValid) throw new Error("INVALID_DATE")
+  return dt.toJSDate()
+}
+function parseSalonDateEnd(dateStr: string): Date {
+  const dt = DateTime.fromISO(dateStr, { zone: SALON_TIMEZONE }).endOf("day")
+  if (!dt.isValid) throw new Error("INVALID_DATE")
+  return dt.toJSDate()
+}
 
 const adminPreHandlers = [authenticate, requireRole("ADMIN")]
 
@@ -269,6 +283,7 @@ export async function adminRoutes(app: FastifyInstance) {
     sortOrder: true,
     masterServices: { select: { serviceId: true } },
     workingHours: { select: { id: true, dayOfWeek: true, startTime: true, endTime: true } },
+    exceptions: { select: { id: true, date: true, dateTo: true } },
   } as const
 
   const masterCreateBody = z.object({
@@ -288,6 +303,17 @@ export async function adminRoutes(app: FastifyInstance) {
     endTime: z.string().regex(/^\d{1,2}:\d{2}$/, "endTime HH:MM"),
   }).refine((r) => r.startTime < r.endTime, { message: "startTime должен быть раньше endTime", path: ["endTime"] })
 
+  const exceptionDayOff = z.object({
+    type: z.literal("DAY_OFF"),
+    date: z.string().regex(DATE_YYYY_MM_DD),
+  })
+  const exceptionVacation = z.object({
+    type: z.literal("VACATION"),
+    dateFrom: z.string().regex(DATE_YYYY_MM_DD),
+    dateTo: z.string().regex(DATE_YYYY_MM_DD),
+  }).refine((r) => r.dateFrom <= r.dateTo, { message: "dateFrom <= dateTo", path: ["dateTo"] })
+  const exceptionRow = z.discriminatedUnion("type", [exceptionDayOff, exceptionVacation])
+
   const masterPatchBody = z.object({
     name: z.string().min(1, "Имя обязательно").optional(),
     photoUrl: z.string().nullable().optional(),
@@ -297,11 +323,26 @@ export async function adminRoutes(app: FastifyInstance) {
     sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
     serviceIds: z.array(z.string().uuid()).optional(),
     workingHours: z.array(workingHourRow).optional(),
+    exceptions: z.array(exceptionRow).optional(),
   })
 
-  function flattenMaster(m: { masterServices: { serviceId: string }[]; [key: string]: unknown }) {
-    const { masterServices, ...rest } = m
-    return { ...rest, serviceIds: masterServices.map((ms) => ms.serviceId) }
+  function flattenMaster(m: {
+    masterServices: { serviceId: string }[]
+    exceptions?: { id: string; date: Date; dateTo: Date | null }[]
+    [key: string]: unknown
+  }) {
+    const { masterServices, exceptions, ...rest } = m
+    return {
+      ...rest,
+      serviceIds: masterServices.map((ms) => ms.serviceId),
+      exceptions: (exceptions ?? []).map((e) => ({
+        id: e.id,
+        date: DateTime.fromJSDate(e.date, { zone: SALON_TIMEZONE }).toFormat("yyyy-MM-dd"),
+        dateTo: e.dateTo
+          ? DateTime.fromJSDate(e.dateTo, { zone: SALON_TIMEZONE }).toFormat("yyyy-MM-dd")
+          : null,
+      })),
+    }
   }
 
   app.get("/masters", {
@@ -399,7 +440,34 @@ export async function adminRoutes(app: FastifyInstance) {
       })
     }
 
-    const { serviceIds, workingHours: workingHoursPayload, ...profileFields } = body.data
+    const { serviceIds, workingHours: workingHoursPayload, exceptions: exceptionsPayload, ...profileFields } = body.data
+
+    if (exceptionsPayload !== undefined) {
+      await prisma.exception.deleteMany({ where: { masterId: id } })
+      for (const ex of exceptionsPayload) {
+        if (ex.type === "DAY_OFF") {
+          await prisma.exception.create({
+            data: {
+              masterId: id,
+              date: parseSalonDate(ex.date),
+              dateTo: null,
+              startAt: null,
+              endAt: null,
+            },
+          })
+        } else {
+          await prisma.exception.create({
+            data: {
+              masterId: id,
+              date: parseSalonDate(ex.dateFrom),
+              dateTo: parseSalonDateEnd(ex.dateTo),
+              startAt: null,
+              endAt: null,
+            },
+          })
+        }
+      }
+    }
 
     if (serviceIds !== undefined) {
       await prisma.$transaction([

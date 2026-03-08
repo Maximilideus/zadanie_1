@@ -190,6 +190,21 @@ export async function getMasterWorkingDays(masterId: string): Promise<number[]> 
   return data.dayOfWeeks ?? []
 }
 
+/** Blocked dates (YYYY-MM-DD) for the master (days off / vacation). */
+export async function getMasterBlockedDates(
+  masterId: string,
+  from?: string,
+  to?: string
+): Promise<string[]> {
+  const url = new URL(`${BACKEND_URL}/telegram/masters/${encodeURIComponent(masterId)}/blocked-dates`)
+  if (from) url.searchParams.set("from", from)
+  if (to) url.searchParams.set("to", to)
+  const res = await fetch(url.toString())
+  if (!res.ok) return []
+  const data = (await res.json()) as { dates: string[] }
+  return data.dates ?? []
+}
+
 export interface AvailabilityResponse {
   timezone: string
   slots: string[]

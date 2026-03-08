@@ -104,8 +104,19 @@ export async function getAvailableSlots(
 
   const exceptions = await prisma.exception.findMany({
     where: {
-      date: { gte: dayStartUtc, lte: dayEndUtc },
-      OR: [{ locationId }, { masterId }],
+      OR: [
+        { locationId },
+        {
+          masterId,
+          OR: [
+            { dateTo: null, date: { gte: dayStartUtc, lte: dayEndUtc } },
+            {
+              dateTo: { not: null, gte: dayStartUtc },
+              date: { lte: dayEndUtc },
+            },
+          ],
+        },
+      ],
     },
     select: { startAt: true, endAt: true },
   })
