@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   adminLogout,
   getAdminMasters,
   createAdminMaster,
   updateAdminMaster,
+  getAdminServices,
 } from "../api/admin.js";
 
 export function AdminMastersPage({ adminUser, onLogout }) {
@@ -24,6 +25,8 @@ export function AdminMastersPage({ adminUser, onLogout }) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
 
+  const [allServices, setAllServices] = useState([]);
+
   const loadMasters = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -37,12 +40,15 @@ export function AdminMastersPage({ adminUser, onLogout }) {
     }
   }, []);
 
-  useEffect(() => { loadMasters(); }, [loadMasters]);
+  useEffect(() => {
+    loadMasters();
+    getAdminServices().then(setAllServices).catch(() => {});
+  }, [loadMasters]);
 
   // ── Create ─────────────────────────────────────────────
 
   function emptyCreate() {
-    return { name: "", email: "", photoUrl: "", publicTitleRu: "", sortOrder: "0" };
+    return { name: "", email: "", photoUrl: "", publicTitleRu: "", sortOrder: "0", serviceIds: [] };
   }
 
   const handleCreate = async () => {
@@ -63,6 +69,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
         photoUrl: createDraft.photoUrl.trim() || null,
         publicTitleRu: createDraft.publicTitleRu.trim() || null,
         sortOrder: sortVal,
+        serviceIds: createDraft.serviceIds,
       });
       setShowCreate(false);
       setCreateDraft(emptyCreate());
@@ -85,6 +92,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
       isActive: m.isActive,
       isVisibleOnWebsite: m.isVisibleOnWebsite,
       sortOrder: String(m.sortOrder),
+      serviceIds: m.serviceIds ?? [],
     });
     setSaveError("");
   };
@@ -112,6 +120,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
         isActive: editDraft.isActive,
         isVisibleOnWebsite: editDraft.isVisibleOnWebsite,
         sortOrder: sortVal,
+        serviceIds: editDraft.serviceIds,
       });
       setEditingId(null);
       setEditDraft({});
@@ -131,6 +140,9 @@ export function AdminMastersPage({ adminUser, onLogout }) {
       alert(e.message || "Ошибка");
     }
   };
+
+  const toggleServiceId = (list, id) =>
+    list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
   const handleLogout = () => {
     adminLogout();
@@ -203,6 +215,25 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                   onChange={(e) => setCreateDraft({ ...createDraft, sortOrder: e.target.value })} />
               </label>
             </div>
+            {allServices.length > 0 && (
+              <div style={s.servicesSection}>
+                <p style={s.servicesTitle}>Услуги мастера</p>
+                <div style={s.servicesList}>
+                  {allServices.map((svc) => (
+                    <label key={svc.id} style={s.serviceItem}>
+                      <input type="checkbox" style={s.checkbox}
+                        checked={createDraft.serviceIds.includes(svc.id)}
+                        onChange={() => setCreateDraft((prev) => ({
+                          ...prev,
+                          serviceIds: toggleServiceId(prev.serviceIds, svc.id),
+                        }))} />
+                      <span>{svc.name}</span>
+                      <span style={s.serviceMeta}>{svc.durationMin} мин · {svc.price} ₽</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
             {createError && <p style={s.formError}>{createError}</p>}
             <button onClick={handleCreate} disabled={creating} style={s.createBtn}>
               {creating ? "Создание…" : "Создать мастера"}
@@ -231,6 +262,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                       <th style={s.th}>Актив.</th>
                       <th style={s.th}>На сайте</th>
                       <th style={s.th}>Порядок</th>
+                      <th style={s.th}>Услуги</th>
                       <th style={s.th}>Действия</th>
                     </tr>
                   </thead>
@@ -240,50 +272,75 @@ export function AdminMastersPage({ adminUser, onLogout }) {
 
                       if (isEditing) {
                         return (
-                          <tr key={m.id} style={s.trEditing}>
-                            <td style={s.td}>
-                              <input style={s.editInput} value={editDraft.name}
-                                onChange={(e) => handleDraftChange("name", e.target.value)} />
-                            </td>
-                            <td style={s.td}>
-                              <input style={s.editInput} value={editDraft.publicTitleRu}
-                                onChange={(e) => handleDraftChange("publicTitleRu", e.target.value)}
-                                placeholder="—" />
-                            </td>
-                            <td style={s.td}>
-                              <input style={{ ...s.editInput, maxWidth: "200px" }} value={editDraft.photoUrl}
-                                onChange={(e) => handleDraftChange("photoUrl", e.target.value)}
-                                placeholder="https://..." />
-                            </td>
-                            <td style={s.td}>
-                              <input type="checkbox" checked={editDraft.isActive}
-                                onChange={(e) => handleDraftChange("isActive", e.target.checked)}
-                                style={s.checkbox} />
-                            </td>
-                            <td style={s.td}>
-                              <input type="checkbox" checked={editDraft.isVisibleOnWebsite}
-                                onChange={(e) => handleDraftChange("isVisibleOnWebsite", e.target.checked)}
-                                style={s.checkbox} />
-                            </td>
-                            <td style={s.td}>
-                              <input style={{ ...s.editInput, width: "55px" }} type="number" min="0"
-                                value={editDraft.sortOrder}
-                                onChange={(e) => handleDraftChange("sortOrder", e.target.value)} />
-                            </td>
-                            <td style={s.td}>
-                              <div style={s.actions}>
-                                <button onClick={handleSave} disabled={saving}
-                                  style={{ ...s.actionBtn, background: "#1a8c3a" }}>
-                                  {saving ? "…" : "Сохранить"}
-                                </button>
-                                <button onClick={cancelEdit} disabled={saving}
-                                  style={{ ...s.actionBtn, background: "#888" }}>
-                                  Отмена
-                                </button>
-                              </div>
-                              {saveError && <div style={s.saveError}>{saveError}</div>}
-                            </td>
-                          </tr>
+                          <React.Fragment key={m.id}>
+                            <tr style={s.trEditing}>
+                              <td style={s.td}>
+                                <input style={s.editInput} value={editDraft.name}
+                                  onChange={(e) => handleDraftChange("name", e.target.value)} />
+                              </td>
+                              <td style={s.td}>
+                                <input style={s.editInput} value={editDraft.publicTitleRu}
+                                  onChange={(e) => handleDraftChange("publicTitleRu", e.target.value)}
+                                  placeholder="—" />
+                              </td>
+                              <td style={s.td}>
+                                <input style={{ ...s.editInput, maxWidth: "200px" }} value={editDraft.photoUrl}
+                                  onChange={(e) => handleDraftChange("photoUrl", e.target.value)}
+                                  placeholder="https://..." />
+                              </td>
+                              <td style={s.td}>
+                                <input type="checkbox" checked={editDraft.isActive}
+                                  onChange={(e) => handleDraftChange("isActive", e.target.checked)}
+                                  style={s.checkbox} />
+                              </td>
+                              <td style={s.td}>
+                                <input type="checkbox" checked={editDraft.isVisibleOnWebsite}
+                                  onChange={(e) => handleDraftChange("isVisibleOnWebsite", e.target.checked)}
+                                  style={s.checkbox} />
+                              </td>
+                              <td style={s.td}>
+                                <input style={{ ...s.editInput, width: "55px" }} type="number" min="0"
+                                  value={editDraft.sortOrder}
+                                  onChange={(e) => handleDraftChange("sortOrder", e.target.value)} />
+                              </td>
+                              <td style={s.td}>
+                                <div style={s.actions}>
+                                  <button onClick={handleSave} disabled={saving}
+                                    style={{ ...s.actionBtn, background: "#1a8c3a" }}>
+                                    {saving ? "…" : "Сохранить"}
+                                  </button>
+                                  <button onClick={cancelEdit} disabled={saving}
+                                    style={{ ...s.actionBtn, background: "#888" }}>
+                                    Отмена
+                                  </button>
+                                </div>
+                                {saveError && <div style={s.saveError}>{saveError}</div>}
+                              </td>
+                            </tr>
+                            {allServices.length > 0 && (
+                              <tr style={s.trEditing}>
+                                <td colSpan={8} style={s.td}>
+                                  <div style={s.servicesSection}>
+                                    <p style={s.servicesTitle}>Услуги мастера</p>
+                                    <div style={s.servicesList}>
+                                      {allServices.map((svc) => (
+                                        <label key={svc.id} style={s.serviceItem}>
+                                          <input type="checkbox" style={s.checkbox}
+                                            checked={(editDraft.serviceIds || []).includes(svc.id)}
+                                            onChange={() => handleDraftChange(
+                                              "serviceIds",
+                                              toggleServiceId(editDraft.serviceIds || [], svc.id),
+                                            )} />
+                                          <span>{svc.name}</span>
+                                          <span style={s.serviceMeta}>{svc.durationMin} мин · {svc.price} ₽</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       }
 
@@ -320,6 +377,13 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                             </button>
                           </td>
                           <td style={s.td}>{m.sortOrder}</td>
+                          <td style={s.td}>
+                            <span style={s.serviceCount}>
+                              {(m.serviceIds?.length || 0) > 0
+                                ? `${m.serviceIds.length} усл.`
+                                : <span style={s.subText}>—</span>}
+                            </span>
+                          </td>
                           <td style={s.td}>
                             <button onClick={() => startEdit(m)} disabled={editingId !== null}
                               style={{ ...s.actionBtn, background: "#3366cc" }}>
@@ -447,4 +511,17 @@ const s = {
     whiteSpace: "nowrap",
   },
   saveError: { fontSize: "11px", color: "#c44", marginTop: "4px" },
+  serviceCount: { fontSize: "13px", color: "#555" },
+  servicesSection: { marginTop: "8px" },
+  servicesTitle: {
+    margin: "0 0 8px", fontSize: "13px", fontWeight: 700, color: "#555",
+  },
+  servicesList: {
+    display: "flex", flexWrap: "wrap", gap: "6px 16px",
+  },
+  serviceItem: {
+    display: "flex", alignItems: "center", gap: "6px",
+    fontSize: "13px", color: "#333", cursor: "pointer", whiteSpace: "nowrap",
+  },
+  serviceMeta: { fontSize: "11px", color: "#999" },
 };

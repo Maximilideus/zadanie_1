@@ -134,6 +134,20 @@ export async function updateAdminMaster(id, fields) {
   return res.json();
 }
 
+export async function getAdminServices() {
+  const res = await fetch(`${API_BASE}/admin/services`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить услуги");
+  }
+
+  const data = await res.json();
+  return data.services ?? [];
+}
+
 export async function getAdminCatalog() {
   const res = await fetch(`${API_BASE}/admin/catalog`, {
     headers: authHeaders(),

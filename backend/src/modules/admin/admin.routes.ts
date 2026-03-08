@@ -267,6 +267,7 @@ export async function adminRoutes(app: FastifyInstance) {
     isActive: true,
     isVisibleOnWebsite: true,
     sortOrder: true,
+    masterServices: { select: { serviceId: true } },
   } as const
 
   const masterCreateBody = z.object({
@@ -277,6 +278,7 @@ export async function adminRoutes(app: FastifyInstance) {
     isActive: z.boolean().optional(),
     isVisibleOnWebsite: z.boolean().optional(),
     sortOrder: z.number().int().min(0).optional(),
+    serviceIds: z.array(z.string().uuid()).optional(),
   })
 
   const masterPatchBody = z.object({
@@ -286,17 +288,33 @@ export async function adminRoutes(app: FastifyInstance) {
     isActive: z.boolean().optional(),
     isVisibleOnWebsite: z.boolean().optional(),
     sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+    serviceIds: z.array(z.string().uuid()).optional(),
   })
+
+  function flattenMaster(m: { masterServices: { serviceId: string }[]; [key: string]: unknown }) {
+    const { masterServices, ...rest } = m
+    return { ...rest, serviceIds: masterServices.map((ms) => ms.serviceId) }
+  }
 
   app.get("/masters", {
     preHandler: adminPreHandlers,
   }, async () => {
-    const masters = await prisma.user.findMany({
+    const raw = await prisma.user.findMany({
       where: { role: "MASTER" },
       select: masterSelect,
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     })
-    return { masters }
+    return { masters: raw.map(flattenMaster) }
+  })
+
+  app.get("/services", {
+    preHandler: adminPreHandlers,
+  }, async () => {
+    const services = await prisma.service.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, durationMin: true, price: true },
+    })
+    return { services }
   })
 
   app.post("/masters", {
@@ -326,24 +344,29 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const location = await prisma.location.findFirst()
 
+    const { serviceIds, ...profileData } = body.data
+
     const master = await prisma.user.create({
       data: {
-        name: body.data.name,
-        email: body.data.email,
+        name: profileData.name,
+        email: profileData.email,
         password: hashed,
         role: "MASTER",
         state: "IDLE",
         locationId: location?.id ?? null,
-        photoUrl: body.data.photoUrl ?? null,
-        publicTitleRu: body.data.publicTitleRu ?? null,
-        isActive: body.data.isActive ?? true,
-        isVisibleOnWebsite: body.data.isVisibleOnWebsite ?? true,
-        sortOrder: body.data.sortOrder ?? 0,
+        photoUrl: profileData.photoUrl ?? null,
+        publicTitleRu: profileData.publicTitleRu ?? null,
+        isActive: profileData.isActive ?? true,
+        isVisibleOnWebsite: profileData.isVisibleOnWebsite ?? true,
+        sortOrder: profileData.sortOrder ?? 0,
+        masterServices: serviceIds?.length
+          ? { create: serviceIds.map((sid) => ({ serviceId: sid })) }
+          : undefined,
       },
       select: masterSelect,
     })
 
-    return reply.status(201).send({ master })
+    return reply.status(201).send({ master: flattenMaster(master) })
   })
 
   app.patch("/masters/:id", {
@@ -368,13 +391,24 @@ export async function adminRoutes(app: FastifyInstance) {
       })
     }
 
+    const { serviceIds, ...profileFields } = body.data
+
+    if (serviceIds !== undefined) {
+      await prisma.$transaction([
+        prisma.masterService.deleteMany({ where: { masterId: id } }),
+        ...serviceIds.map((sid) =>
+          prisma.masterService.create({ data: { masterId: id, serviceId: sid } }),
+        ),
+      ])
+    }
+
     const master = await prisma.user.update({
       where: { id },
-      data: body.data,
+      data: profileFields,
       select: masterSelect,
     })
 
-    return { master }
+    return { master: flattenMaster(master) }
   })
 
   // ── Catalog ─────────────────────────────────────────────────
