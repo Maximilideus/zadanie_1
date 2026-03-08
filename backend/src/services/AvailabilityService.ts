@@ -53,6 +53,14 @@ export async function getAvailableSlots(
   const locationId = service.locationId
   const durationMin = service.durationMin
 
+  const master = await prisma.user.findUnique({
+    where: { id: masterId },
+    select: { id: true, isActive: true, role: true },
+  })
+  if (!master || master.role !== "MASTER" || !master.isActive) {
+    throw new Error("MASTER_NOT_AVAILABLE")
+  }
+
   const dayStart = DateTime.fromISO(`${date}T00:00:00`, { zone: timezone })
   if (!dayStart.isValid) throw new Error("INVALID_DATE")
 

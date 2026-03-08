@@ -413,9 +413,23 @@ export async function onMasterChosen(ctx: Context, masterId: string): Promise<vo
   try {
     const masters = await getMasters(serviceId)
     const master = masters.find((m) => m.id === masterId)
+    if (!master) {
+      await ctx.answerCallbackQuery({
+        text: "Этот специалист сейчас недоступен. Пожалуйста, выберите другого мастера.",
+        show_alert: true,
+      }).catch(() => {})
+      const keyboard = new InlineKeyboard()
+      for (let i = 0; i < masters.length; i++) {
+        keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
+        if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
+      }
+      const text = buildSummary(getBookingSession(telegramId)) + "\n\nЭтот специалист сейчас недоступен. Выберите мастера:"
+      await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+      return
+    }
     setBookingSession(telegramId, {
       masterId,
-      masterName: master ? formatMasterDisplayName(master) : "—",
+      masterName: formatMasterDisplayName(master),
       step: "date",
     })
     console.log("[wizard] step: master chosen", masterId)
@@ -899,6 +913,31 @@ async function handleBackendError(
     text = "Введите дату в диапазоне от завтра до 60 дней вперёд (ГГГГ-ММ-ДД)."
   } else if (msg.includes("DATE_IS_TODAY") || msg.includes("current day")) {
     text = "Запись на сегодня недоступна. Пожалуйста, выберите другую дату."
+  } else if (msg.includes("MASTER_NOT_AVAILABLE")) {
+    text = "Этот специалист сейчас недоступен. Пожалуйста, выберите другого мастера."
+    const telegramId = ctx.from?.id
+    if (telegramId !== undefined && session.serviceId) {
+      setBookingSession(telegramId, {
+        masterId: undefined,
+        masterName: undefined,
+        dateStr: undefined,
+        timeStr: undefined,
+        scheduledAtIso: undefined,
+        confirm: { ...EMPTY_CONFIRM_STATE },
+        step: "master",
+      })
+      const masters = await getMasters(session.serviceId)
+      if (masters.length > 0) {
+        const keyboard = new InlineKeyboard()
+        for (let i = 0; i < masters.length; i++) {
+          keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
+          if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
+        }
+        const full = buildSummary(getBookingSession(telegramId)) + "\n\n" + text
+        await editWizardMessage(ctx, getBookingSession(telegramId), full, keyboard)
+        return
+      }
+    }
   }
   try {
     const full = buildSummary(session) + "\n\n" + text

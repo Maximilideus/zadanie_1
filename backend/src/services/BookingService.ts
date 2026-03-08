@@ -133,10 +133,13 @@ export class BookingService {
     }
     const master = await prisma.user.findUnique({
       where: { id: masterId },
-      select: { role: true },
+      select: { role: true, isActive: true },
     })
     if (!master || master.role !== "MASTER") {
       throw new Error("MASTER_CANNOT_PERFORM_SERVICE")
+    }
+    if (!master.isActive) {
+      throw new Error("MASTER_NOT_AVAILABLE")
     }
     const link = await prisma.masterService.findUnique({
       where: {
@@ -163,6 +166,19 @@ export class BookingService {
       throw new Error("INVALID_SCHEDULED_AT")
     }
     const { userId, bookingId } = await this.getPendingBookingByTelegramId(telegramId)
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { masterId: true },
+    })
+    if (booking?.masterId) {
+      const master = await prisma.user.findUnique({
+        where: { id: booking.masterId },
+        select: { isActive: true, role: true },
+      })
+      if (!master || master.role !== "MASTER" || !master.isActive) {
+        throw new Error("MASTER_NOT_AVAILABLE")
+      }
+    }
     try {
       return await prisma.$transaction(async (tx) => {
         const updated = await tx.booking.update({

@@ -29,6 +29,7 @@ async function listMastersHandler(request: FastifyRequest<{ Querystring: Queryst
     const masters = await prisma.user.findMany({
       where: {
         role: "MASTER",
+        isActive: true,
         masterServices: { some: { serviceId } },
       },
       select: { id: true, name: true },
@@ -39,7 +40,7 @@ async function listMastersHandler(request: FastifyRequest<{ Querystring: Queryst
   }
 
   const masters = await prisma.user.findMany({
-    where: { role: "MASTER" },
+    where: { role: "MASTER", isActive: true },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   })
