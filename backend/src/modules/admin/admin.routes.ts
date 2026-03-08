@@ -26,6 +26,37 @@ const statusPatchBody = z.object({
   status: z.enum(["CONFIRMED", "CANCELLED", "COMPLETED"]),
 })
 
+const masterCreateBody = z.object({
+  name: z.string().min(1, "Имя не может быть пустым"),
+  email: z.string().email("Некорректный email"),
+  password: z.string().min(6, "Пароль минимум 6 символов"),
+  photoUrl: z.string().nullable().optional(),
+  publicTitleRu: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+  isVisibleOnWebsite: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+})
+
+const masterPatchBody = z.object({
+  name: z.string().min(1, "Имя не может быть пустым").optional(),
+  photoUrl: z.string().nullable().optional(),
+  publicTitleRu: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+  isVisibleOnWebsite: z.boolean().optional(),
+  sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+})
+
+const masterSelect = {
+  id: true,
+  name: true,
+  email: true,
+  photoUrl: true,
+  publicTitleRu: true,
+  isActive: true,
+  isVisibleOnWebsite: true,
+  sortOrder: true,
+} as const
+
 const catalogPatchBody = z.object({
   titleRu: z.string().min(1, "titleRu не может быть пустым").optional(),
   descriptionRu: z.string().nullable().optional(),
@@ -256,17 +287,81 @@ export async function adminRoutes(app: FastifyInstance) {
     }
   })
 
-  // ── Masters list (for filters) ────────────────────────────────
+  // ── Masters ──────────────────────────────────────────────────
 
   app.get("/masters", {
     preHandler: adminPreHandlers,
   }, async () => {
     const masters = await prisma.user.findMany({
       where: { role: "MASTER" },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
+      select: masterSelect,
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     })
     return { masters }
+  })
+
+  app.post("/masters", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = masterCreateBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const { password, ...rest } = body.data
+    const bcrypt = await import("bcrypt")
+    const hashedPassword = await bcrypt.hash(password, 10)
+
+    const location = await prisma.location.findFirst({ select: { id: true } })
+
+    const master = await prisma.user.create({
+      data: {
+        ...rest,
+        password: hashedPassword,
+        role: "MASTER",
+        state: "IDLE",
+        locationId: location?.id ?? null,
+      },
+      select: masterSelect,
+    })
+    return reply.status(201).send({ master })
+  })
+
+  app.patch("/masters/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const body = masterPatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const existing = await prisma.user.findFirst({
+      where: { id, role: "MASTER" },
+      select: { id: true },
+    })
+    if (!existing) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Мастер не найден",
+      })
+    }
+
+    const updated = await prisma.user.update({
+      where: { id },
+      data: body.data,
+      select: masterSelect,
+    })
+    return { master: updated }
   })
 
   // ── Catalog ─────────────────────────────────────────────────

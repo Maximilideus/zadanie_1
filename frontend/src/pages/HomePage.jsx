@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { MASTERS_DATA } from "../App.jsx";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
+import { SpecialistsSection } from "../components/SpecialistsSection.jsx";
 
 // ═══════════════════════════════════════════════════════════════
 // HERO
@@ -313,39 +313,6 @@ function MassageSection({ botUrl }) {
               <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-massage-btn">
                 Записаться в Telegram
               </a>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// МАСТЕРА
-// ═══════════════════════════════════════════════════════════════
-
-function MastersSection() {
-  const [ref, isVisible] = useScrollAnimation({ threshold: 0.2 });
-  const masters = Object.entries(MASTERS_DATA);
-
-  return (
-    <section className="land-section" ref={ref}>
-      <div className={`land-section-inner fade-in-up ${isVisible ? "visible" : ""}`}>
-        <p className="land-section-tag">Команда</p>
-        <h2 className="land-h2">Наши специалисты</h2>
-        <div className="land-masters-grid">
-          {masters.map(([name, data]) => (
-            <div key={name} className="land-master-card">
-              <div className="land-master-avatar-wrap">
-                <img src={data.photo} alt={name} className="land-master-avatar" loading="lazy" />
-              </div>
-              <strong className="land-master-name">{name}</strong>
-              <p className="land-master-spec">{data.specialization}</p>
-              <div className="land-master-rating">
-                {"★".repeat(5)}
-                <span>{data.rating}</span>
-              </div>
             </div>
           ))}
         </div>
@@ -748,7 +715,7 @@ export function HomePage({ botUrl }) {
       <ServicesSection />
       <GenderSection />
       <MassageSection botUrl={botUrl} />
-      <MastersSection />
+      <SpecialistsSection />
       <TrustSection />
       <ReviewsSection />
       <FaqSection botUrl={botUrl} />

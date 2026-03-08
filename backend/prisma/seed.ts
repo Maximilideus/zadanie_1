@@ -15,10 +15,10 @@ const LOCATION = {
 
 // --- 2) Masters (Users with role MASTER) ---
 const MASTERS = [
-  { name: "Anna", email: "anna.master@example.com" },
-  { name: "Maria", email: "maria.master@example.com" },
-  { name: "Elena", email: "elena.master@example.com" },
-  { name: "Dmitriy", email: "dmitriy.master@example.com" },
+  { name: "Анна", email: "anna.master@example.com", publicTitleRu: "Депиляция", photoUrl: "https://api.dicebear.com/7.x/personas/svg?seed=Anna", sortOrder: 0 },
+  { name: "Мария", email: "maria.master@example.com", publicTitleRu: "Депиляция", photoUrl: "https://api.dicebear.com/7.x/personas/svg?seed=Maria", sortOrder: 1 },
+  { name: "Елена", email: "elena.master@example.com", publicTitleRu: "Массаж и депиляция", photoUrl: "https://api.dicebear.com/7.x/personas/svg?seed=Elena", sortOrder: 2 },
+  { name: "Дмитрий", email: "dmitriy.master@example.com", publicTitleRu: "Массаж", photoUrl: "https://api.dicebear.com/7.x/personas/svg?seed=Dmitry", sortOrder: 3 },
 ] as const
 
 // --- 3) Services: [name, durationMin, price] ---
@@ -81,12 +81,20 @@ async function main() {
         role: "MASTER",
         state: "IDLE",
         locationId: locationRecord.id,
+        photoUrl: m.photoUrl,
+        publicTitleRu: m.publicTitleRu,
+        sortOrder: m.sortOrder,
+        isActive: true,
+        isVisibleOnWebsite: true,
       },
       update: {
         name: m.name,
         role: "MASTER",
         state: "IDLE",
         locationId: locationRecord.id,
+        photoUrl: m.photoUrl,
+        publicTitleRu: m.publicTitleRu,
+        sortOrder: m.sortOrder,
       },
     })
     masterIds[m.email] = user.id

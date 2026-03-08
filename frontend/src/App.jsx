@@ -7,16 +7,10 @@ import { ElectroPage } from "./pages/ElectroPage.jsx";
 import { AdminLoginPage } from "./pages/AdminLoginPage.jsx";
 import { AdminBookingsPage } from "./pages/AdminBookingsPage.jsx";
 import { AdminCatalogPage } from "./pages/AdminCatalogPage.jsx";
+import { AdminMastersPage } from "./pages/AdminMastersPage.jsx";
 import { getAdminMe, getAdminToken } from "./api/admin.js";
 
 export const TELEGRAM_BOOK_URL = "https://t.me/my_salon_ai_assistant_bot";
-
-export const MASTERS_DATA = {
-  "Анна":    { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Anna",   rating: 4.9, specialization: "Депиляция" },
-  "Мария":   { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Maria",  rating: 4.7, specialization: "Депиляция" },
-  "Елена":   { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Elena",  rating: 4.8, specialization: "Массаж и депиляция" },
-  "Дмитрий": { photo: "https://api.dicebear.com/7.x/personas/svg?seed=Dmitry", rating: 4.6, specialization: "Массаж" },
-};
 
 function AdminGuard({ adminUser, children }) {
   if (!adminUser) return <Navigate to="/admin/login" replace />;
@@ -78,6 +72,14 @@ export function App() {
           element={
             <AdminGuard adminUser={adminUser}>
               <AdminCatalogPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/masters"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminMastersPage adminUser={adminUser} onLogout={handleLogout} />
             </AdminGuard>
           }
         />

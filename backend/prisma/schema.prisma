@@ -42,6 +42,12 @@ model User {
   state      String  @default("IDLE")
   telegramId String? @unique
 
+  photoUrl           String?
+  publicTitleRu      String?
+  isActive           Boolean @default(true)
+  isVisibleOnWebsite Boolean @default(true)
+  sortOrder          Int     @default(0)
+
   locationId String?
   location   Location? @relation(fields: [locationId], references: [id])
 

@@ -111,6 +111,16 @@ app.register(jwtPlugin)
   app.register(telegramServicesRoutes, { prefix: "/telegram" })
   app.register(catalogRoutes, { prefix: "/catalog" })
 
+  // Public specialists for website (direct route — no prefix plugin, no auth)
+  app.get("/public/masters", async () => {
+    const masters = await prisma.user.findMany({
+      where: { role: "MASTER", isActive: true, isVisibleOnWebsite: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, photoUrl: true, publicTitleRu: true },
+    }) 
+    return { masters }
+  })
+
   // Protected routes
   app.register(userRoutes, { prefix: "/users" })
   app.register(masterRoutes, { prefix: "/masters" })
