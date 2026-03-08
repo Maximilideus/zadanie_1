@@ -101,6 +101,16 @@ app.register(jwtPlugin)
     })
   }
 
+  // Public website: visible masters for homepage "Наши специалисты"
+  app.get("/public/masters", async () => {
+    const masters = await prisma.user.findMany({
+      where: { role: "MASTER", isActive: true, isVisibleOnWebsite: true },
+      select: { id: true, name: true, photoUrl: true, publicTitleRu: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    })
+    return { masters }
+  })
+
   // Public routes
   app.register(authRoutes, { prefix: "/auth" })
   app.register(telegramRoutes, { prefix: "/telegram" })

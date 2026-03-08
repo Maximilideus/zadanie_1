@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import { MASTERS_DATA } from "../App.jsx";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
+import { getPublicMasters } from "../api/public.js";
 
 // ═══════════════════════════════════════════════════════════════
 // HERO
@@ -327,25 +327,57 @@ function MassageSection({ botUrl }) {
 
 function MastersSection() {
   const [ref, isVisible] = useScrollAnimation({ threshold: 0.2 });
-  const masters = Object.entries(MASTERS_DATA);
+  const [masters, setMasters] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPublicMasters()
+      .then((list) => {
+        if (!cancelled) {
+          setMasters(Array.isArray(list) ? list : []);
+          setLoaded(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (!loaded) return null;
+
+  const showContent = isVisible || masters.length > 0;
 
   return (
     <section className="land-section" ref={ref}>
-      <div className={`land-section-inner fade-in-up ${isVisible ? "visible" : ""}`}>
+      <div className={`land-section-inner fade-in-up ${showContent ? "visible" : ""}`}>
         <p className="land-section-tag">Команда</p>
         <h2 className="land-h2">Наши специалисты</h2>
         <div className="land-masters-grid">
-          {masters.map(([name, data]) => (
-            <div key={name} className="land-master-card">
+          {masters.length === 0 ? (
+            <p className="land-section-tag" style={{ gridColumn: "1 / -1" }}>Специалисты появятся позже</p>
+          ) : masters.map((m) => (
+            <div key={m.id} className="land-master-card">
               <div className="land-master-avatar-wrap">
-                <img src={data.photo} alt={name} className="land-master-avatar" loading="lazy" />
+                {m.photoUrl ? (
+                  <img
+                    src={m.photoUrl}
+                    alt={m.name || ""}
+                    className="land-master-avatar"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div
+                    className="land-master-avatar land-master-avatar-placeholder"
+                    aria-hidden
+                  >
+                    {(m.name || "?").charAt(0)}
+                  </div>
+                )}
               </div>
-              <strong className="land-master-name">{name}</strong>
-              <p className="land-master-spec">{data.specialization}</p>
-              <div className="land-master-rating">
-                {"★".repeat(5)}
-                <span>{data.rating}</span>
-              </div>
+              <strong className="land-master-name">{m.name || "—"}</strong>
+              <p className="land-master-spec">{m.publicTitleRu || "Специалист"}</p>
             </div>
           ))}
         </div>
