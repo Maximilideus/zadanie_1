@@ -26,6 +26,15 @@ const statusPatchBody = z.object({
   status: z.enum(["CONFIRMED", "CANCELLED", "COMPLETED"]),
 })
 
+const catalogPatchBody = z.object({
+  titleRu: z.string().min(1, "titleRu не может быть пустым").optional(),
+  descriptionRu: z.string().nullable().optional(),
+  price: z.number().int().min(0, "price >= 0").nullable().optional(),
+  durationMin: z.number().int().min(1, "durationMin > 0").nullable().optional(),
+  isVisible: z.boolean().optional(),
+  sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+})
+
 export async function adminRoutes(app: FastifyInstance) {
   // ── Auth ──────────────────────────────────────────────────────
 
@@ -258,5 +267,108 @@ export async function adminRoutes(app: FastifyInstance) {
       orderBy: { name: "asc" },
     })
     return { masters }
+  })
+
+  // ── Catalog ─────────────────────────────────────────────────
+
+  app.get("/catalog", {
+    preHandler: adminPreHandlers,
+  }, async () => {
+    const items = await prisma.catalogItem.findMany({
+      orderBy: [{ sortOrder: "asc" }, { titleRu: "asc" }],
+      select: {
+        id: true,
+        category: true,
+        type: true,
+        gender: true,
+        groupKey: true,
+        titleRu: true,
+        subtitleRu: true,
+        descriptionRu: true,
+        price: true,
+        durationMin: true,
+        isVisible: true,
+        sortOrder: true,
+        serviceId: true,
+      },
+    })
+    return { items }
+  })
+
+  app.patch("/catalog/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+
+    const body = catalogPatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const existing = await prisma.catalogItem.findUnique({
+      where: { id },
+      select: { id: true, serviceId: true, durationMin: true, price: true },
+    })
+    if (!existing) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Элемент каталога не найден",
+      })
+    }
+
+    const data: Record<string, unknown> = { ...body.data }
+
+    // Keep subtitleRu in sync with durationMin for duration-based items
+    if (data.durationMin !== undefined) {
+      const newDur = data.durationMin as number | null
+      if (newDur != null) {
+        data.subtitleRu = `${newDur} мин`
+      }
+    }
+
+    const updated = await prisma.catalogItem.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        category: true,
+        type: true,
+        gender: true,
+        groupKey: true,
+        titleRu: true,
+        subtitleRu: true,
+        descriptionRu: true,
+        price: true,
+        durationMin: true,
+        isVisible: true,
+        sortOrder: true,
+        serviceId: true,
+      },
+    })
+
+    // Sync linked Service so booking/availability stays consistent
+    if (existing.serviceId && (data.durationMin !== undefined || data.price !== undefined)) {
+      const serviceData: Record<string, unknown> = {}
+      const finalDur = data.durationMin !== undefined ? data.durationMin : existing.durationMin
+      const finalPrice = data.price !== undefined ? data.price : existing.price
+      if (finalDur != null) serviceData.durationMin = finalDur
+      if (finalPrice != null) serviceData.price = finalPrice
+
+      if (Object.keys(serviceData).length > 0) {
+        await prisma.service.update({
+          where: { id: existing.serviceId },
+          data: serviceData,
+        }).catch((err) => {
+          console.error("[admin-catalog] Service sync error (non-fatal):", err)
+        })
+      }
+    }
+
+    return { item: updated }
   })
 }

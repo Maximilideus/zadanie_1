@@ -100,3 +100,32 @@ export async function getAdminMasters() {
   const data = await res.json();
   return data.masters;
 }
+
+export async function getAdminCatalog() {
+  const res = await fetch(`${API_BASE}/admin/catalog`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить каталог");
+  }
+
+  const data = await res.json();
+  return data.items;
+}
+
+export async function updateAdminCatalogItem(id, fields) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось сохранить изменения");
+  }
+
+  return res.json();
+}

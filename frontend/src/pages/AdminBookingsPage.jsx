@@ -140,7 +140,15 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
       <div style={s.container}>
         {/* Header */}
         <header style={s.header}>
-          <h1 style={s.title}>Админ-панель</h1>
+          <div style={s.headerLeft}>
+            <h1 style={s.title}>Записи</h1>
+            <nav style={s.nav}>
+              <button style={{ ...s.navBtn, ...s.navBtnActive }}>Записи</button>
+              <button onClick={() => navigate("/admin/catalog")} style={s.navBtn}>
+                Каталог
+              </button>
+            </nav>
+          </div>
           <div style={s.headerRight}>
             <span style={s.email}>{adminUser?.email}</span>
             <button onClick={handleLogout} style={s.logoutBtn}>Выйти</button>
@@ -300,8 +308,17 @@ const s = {
     display: "flex", justifyContent: "space-between", alignItems: "center",
     marginBottom: "20px",
   },
+  headerLeft: { display: "flex", alignItems: "center", gap: "20px" },
   title: { margin: 0, fontSize: "24px", fontWeight: 700, color: "#1a1a1a" },
   headerRight: { display: "flex", alignItems: "center", gap: "12px" },
+  nav: { display: "flex", gap: "4px" },
+  navBtn: {
+    padding: "6px 14px", border: "1px solid #ddd", borderRadius: "6px",
+    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#555",
+  },
+  navBtnActive: {
+    background: "#1a1a1a", color: "#fff", borderColor: "#1a1a1a",
+  },
   email: { fontSize: "14px", color: "#666" },
   logoutBtn: {
     padding: "8px 16px", border: "1px solid #ddd", borderRadius: "8px",
