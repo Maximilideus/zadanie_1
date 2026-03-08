@@ -6,6 +6,7 @@ import { requireRole } from "../../middlewares/requireRole"
 import { prisma } from "../../lib/prisma"
 import { updateBookingStatus } from "../booking/booking.service"
 import type { BookingStatus } from "../booking/booking.status.machine"
+import { sendBookingStatusNotification } from "../../services/bookingNotifications"
 
 const adminPreHandlers = [authenticate, requireRole("ADMIN")]
 
@@ -190,8 +191,41 @@ export async function adminRoutes(app: FastifyInstance) {
       })
     }
 
+    const newStatus = body.data.status as BookingStatus
+
     try {
-      const updated = await updateBookingStatus(id, body.data.status as BookingStatus)
+      const updated = await updateBookingStatus(id, newStatus)
+
+      // Best-effort Telegram notification — never blocks admin response
+      prisma.booking.findUnique({
+        where: { id },
+        select: {
+          scheduledAt: true,
+          user: { select: { telegramId: true } },
+          serviceId: true,
+          masterId: true,
+        },
+      }).then(async (booking) => {
+        if (!booking?.user?.telegramId) return
+        const [service, master] = await Promise.all([
+          booking.serviceId
+            ? prisma.service.findUnique({ where: { id: booking.serviceId }, select: { name: true } })
+            : null,
+          booking.masterId
+            ? prisma.user.findUnique({ where: { id: booking.masterId }, select: { name: true } })
+            : null,
+        ])
+        await sendBookingStatusNotification({
+          telegramId: booking.user.telegramId,
+          newStatus,
+          serviceName: service?.name ?? null,
+          masterName: master?.name ?? null,
+          scheduledAt: booking.scheduledAt,
+        })
+      }).catch((err) => {
+        console.error("[admin] Booking notification error (non-fatal):", err)
+      })
+
       return { booking: updated }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : ""

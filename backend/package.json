@@ -10,7 +10,8 @@
     "link-catalog": "ts-node prisma/linkCatalogItemsToServices.ts",
     "electro-zones-bookable": "ts-node prisma/makeElectroZonesBookable.ts",
     "add-massage-catalog": "ts-node prisma/addMassageCatalogItems.ts",
-    "reminders:run": "ts-node -e \"require('./src/jobs/sendBookingReminders').runBookingRemindersOnce().then(() => process.exit(0))\""
+    "reminders:run": "ts-node -e \"require('./src/jobs/sendBookingReminders').runBookingRemindersOnce().then(() => process.exit(0))\"",
+    "check-catalog": "ts-node prisma/checkCatalogIntegrity.ts"
   },
   "keywords": [],
   "author": "",
