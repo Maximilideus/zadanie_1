@@ -1,5 +1,6 @@
 import { DateTime } from "luxon"
 import { prisma } from "../lib/prisma"
+import { SALON_TIMEZONE } from "../config/salon"
 
 const SLOT_STEP_MINUTES = 15
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
@@ -45,10 +46,10 @@ export async function getAvailableSlots(
 
   const service = await prisma.service.findUnique({
     where: { id: serviceId },
-    select: { durationMin: true, locationId: true, location: { select: { timezone: true } } },
+    select: { durationMin: true, locationId: true },
   })
   if (!service) throw new Error("NOT_FOUND")
-  const timezone = service.location.timezone
+  const timezone = SALON_TIMEZONE
   const locationId = service.locationId
   const durationMin = service.durationMin
 
@@ -67,11 +68,20 @@ export async function getAvailableSlots(
   const dayStartUtc = dayStart.toUTC().toJSDate()
   const dayEndUtc = dayEnd.toUTC().toJSDate()
 
+  // Master-specific availability only: do NOT use legacy rows with masterId = null
   const workingHours = await prisma.workingHour.findMany({
-    where: { locationId, dayOfWeek },
+    where: { masterId, dayOfWeek },
     select: { startTime: true, endTime: true },
   })
-  if (workingHours.length === 0) return { timezone, slots: [] }
+  if (workingHours.length === 0) {
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("[availability] masterId=%s date=%s dayOfWeek=%s masterRows=0 → 0 slots (no fallback to null-master rows)", masterId, date, dayOfWeek)
+    }
+    return { timezone, slots: [] }
+  }
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[availability] masterId=%s date=%s masterRows=%s", masterId, date, workingHours.length)
+  }
 
   let workingIntervals: Interval[] = workingHours.map((wh) => {
     const startTm = parseHHMM(wh.startTime)
@@ -162,5 +172,8 @@ export async function getAvailableSlots(
     .filter(Boolean)
     .sort()
 
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[availability] masterId=%s date=%s slots=%s", masterId, date, slotsUtc.length)
+  }
   return { timezone, slots: slotsUtc }
 }

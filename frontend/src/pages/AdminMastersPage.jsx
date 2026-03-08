@@ -8,6 +8,8 @@ import {
   getAdminServices,
 } from "../api/admin.js";
 
+const DAY_LABELS = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
+
 export function AdminMastersPage({ adminUser, onLogout }) {
   const navigate = useNavigate();
 
@@ -93,6 +95,11 @@ export function AdminMastersPage({ adminUser, onLogout }) {
       isVisibleOnWebsite: m.isVisibleOnWebsite,
       sortOrder: String(m.sortOrder),
       serviceIds: m.serviceIds ?? [],
+      workingHours: (m.workingHours || []).map((wh) => ({
+        dayOfWeek: wh.dayOfWeek,
+        startTime: wh.startTime || "09:00",
+        endTime: wh.endTime || "18:00",
+      })),
     });
     setSaveError("");
   };
@@ -121,6 +128,11 @@ export function AdminMastersPage({ adminUser, onLogout }) {
         isVisibleOnWebsite: editDraft.isVisibleOnWebsite,
         sortOrder: sortVal,
         serviceIds: editDraft.serviceIds,
+        workingHours: (editDraft.workingHours || []).map((wh) => ({
+          dayOfWeek: wh.dayOfWeek,
+          startTime: wh.startTime,
+          endTime: wh.endTime,
+        })),
       });
       setEditingId(null);
       setEditDraft({});
@@ -143,6 +155,20 @@ export function AdminMastersPage({ adminUser, onLogout }) {
 
   const toggleServiceId = (list, id) =>
     list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+
+  const workingHoursList = editDraft.workingHours || [];
+  const addWorkingHourRow = () => {
+    handleDraftChange("workingHours", [...workingHoursList, { dayOfWeek: 1, startTime: "09:00", endTime: "18:00" }]);
+  };
+  const removeWorkingHourRow = (index) => {
+    handleDraftChange("workingHours", workingHoursList.filter((_, i) => i !== index));
+  };
+  const updateWorkingHourRow = (index, field, value) => {
+    const next = workingHoursList.map((row, i) =>
+      i === index ? { ...row, [field]: value } : row,
+    );
+    handleDraftChange("workingHours", next);
+  };
 
   const handleLogout = () => {
     adminLogout();
@@ -340,6 +366,52 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                                 </td>
                               </tr>
                             )}
+                            <tr style={s.trEditing}>
+                              <td colSpan={8} style={s.td}>
+                                <div style={s.workingHoursSection}>
+                                  <p style={s.servicesTitle}>Рабочие часы</p>
+                                  {workingHoursList.map((row, idx) => (
+                                    <div key={idx} style={s.workingHourRow}>
+                                      <select
+                                        style={{ ...s.input, ...s.workingHourSelect }}
+                                        value={row.dayOfWeek}
+                                        onChange={(e) => updateWorkingHourRow(idx, "dayOfWeek", Number(e.target.value))}
+                                      >
+                                        {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                                          <option key={d} value={d}>{DAY_LABELS[d]}</option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        type="text"
+                                        style={{ ...s.editInput, ...s.timeInput }}
+                                        placeholder="09:00"
+                                        value={row.startTime}
+                                        onChange={(e) => updateWorkingHourRow(idx, "startTime", e.target.value)}
+                                      />
+                                      <span style={s.timeSep}>–</span>
+                                      <input
+                                        type="text"
+                                        style={{ ...s.editInput, ...s.timeInput }}
+                                        placeholder="18:00"
+                                        value={row.endTime}
+                                        onChange={(e) => updateWorkingHourRow(idx, "endTime", e.target.value)}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => removeWorkingHourRow(idx)}
+                                        style={s.removeRowBtn}
+                                        title="Удалить"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button type="button" onClick={addWorkingHourRow} style={s.addRowBtn}>
+                                    Добавить рабочий день
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
                           </React.Fragment>
                         );
                       }
@@ -524,4 +596,19 @@ const s = {
     fontSize: "13px", color: "#333", cursor: "pointer", whiteSpace: "nowrap",
   },
   serviceMeta: { fontSize: "11px", color: "#999" },
+  workingHoursSection: { marginTop: "12px" },
+  workingHourRow: {
+    display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", flexWrap: "wrap",
+  },
+  workingHourSelect: { minWidth: "140px" },
+  timeInput: { width: "70px" },
+  timeSep: { fontSize: "14px", color: "#888" },
+  removeRowBtn: {
+    padding: "4px 8px", border: "none", borderRadius: "4px",
+    background: "#eee", color: "#c44", cursor: "pointer", fontSize: "14px",
+  },
+  addRowBtn: {
+    marginTop: "4px", padding: "6px 12px", border: "1px dashed #999", borderRadius: "6px",
+    background: "#fff", fontSize: "13px", color: "#555", cursor: "pointer",
+  },
 };

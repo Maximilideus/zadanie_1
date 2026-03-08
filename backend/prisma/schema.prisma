@@ -54,6 +54,7 @@ model User {
   clientAppointments Appointment[]   @relation("ClientAppointments")
   masterAppointments Appointment[]   @relation("MasterAppointments")
   masterServices     MasterService[]
+  workingHours       WorkingHour[]   @relation("MasterWorkingHours")
 
   exceptions Exception[] @relation("UserExceptions")
   bookings   Booking[]
@@ -168,11 +169,15 @@ model AppointmentService {
 }
 
 /// dayOfWeek: 1 = Monday, 7 = Sunday (ISO weekday)
+/// When masterId is set, row is master-specific; when null, location-level default.
 model WorkingHour {
   id String @id @default(uuid())
 
   locationId String
   location   Location @relation(fields: [locationId], references: [id])
+
+  masterId String?
+  master   User?   @relation("MasterWorkingHours", fields: [masterId], references: [id], onDelete: Cascade)
 
   dayOfWeek Int // 1-7 (Mon-Sun)
 
@@ -184,6 +189,7 @@ model WorkingHour {
   createdAt DateTime @default(now())
 
   @@index([locationId, dayOfWeek])
+  @@index([masterId, dayOfWeek])
 }
 
 model Exception {

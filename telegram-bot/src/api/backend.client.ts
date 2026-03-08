@@ -182,6 +182,14 @@ export async function getMasters(serviceId?: string): Promise<MasterItem[]> {
   return data.masters
 }
 
+/** Working weekdays for the master (ISO 1–7). Used to filter date keyboard. */
+export async function getMasterWorkingDays(masterId: string): Promise<number[]> {
+  const res = await fetch(`${BACKEND_URL}/telegram/masters/${encodeURIComponent(masterId)}/working-days`)
+  if (!res.ok) return []
+  const data = (await res.json()) as { dayOfWeeks: number[] }
+  return data.dayOfWeeks ?? []
+}
+
 export interface AvailabilityResponse {
   timezone: string
   slots: string[]

@@ -45,6 +45,18 @@ async function listMastersHandler(request: FastifyRequest<{ Querystring: Queryst
   return { masters: masters.map((m) => ({ id: m.id, name: m.name })) }
 }
 
+async function masterWorkingDaysHandler(
+  request: FastifyRequest<{ Params: { masterId: string } }>
+) {
+  const { masterId } = request.params
+  const rows = await prisma.workingHour.findMany({
+    where: { masterId },
+    select: { dayOfWeek: true },
+  })
+  const dayOfWeeks = [...new Set(rows.map((r) => r.dayOfWeek))].sort((a, b) => a - b)
+  return { dayOfWeeks }
+}
+
 export async function telegramMastersRoutes(app: FastifyInstance) {
   app.get("/masters", {
     schema: {
@@ -67,5 +79,28 @@ export async function telegramMastersRoutes(app: FastifyInstance) {
       },
     },
     handler: listMastersHandler,
+  })
+
+  app.get("/masters/:masterId/working-days", {
+    schema: {
+      params: {
+        type: "object",
+        required: ["masterId"],
+        properties: { masterId: { type: "string", pattern: UUID_PATTERN } },
+      },
+      response: {
+        200: {
+          type: "object",
+          required: ["dayOfWeeks"],
+          properties: {
+            dayOfWeeks: {
+              type: "array",
+              items: { type: "integer", minimum: 1, maximum: 7 },
+            },
+          },
+        },
+      },
+    },
+    handler: masterWorkingDaysHandler,
   })
 }

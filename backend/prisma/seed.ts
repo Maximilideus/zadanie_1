@@ -10,7 +10,7 @@ const MASTER_SEED_PASSWORD = "MasterSeed1!"
 const LOCATION = {
   name: "Main Salon",
   address: "TBD",
-  timezone: "Europe/Berlin",
+  timezone: "Europe/Ulyanovsk",
 }
 
 // --- 2) Masters (Users with role MASTER) ---

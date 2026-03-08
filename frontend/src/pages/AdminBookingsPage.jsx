@@ -32,21 +32,20 @@ const VALID_ACTIONS = {
   ],
 };
 
-function formatDate(iso) {
+const SALON_TIMEZONE = "Europe/Ulyanovsk";
+
+function formatDate(iso, timeZone = undefined) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const opts = { day: "numeric", month: "short", year: "numeric" };
+  if (timeZone) opts.timeZone = timeZone;
+  return new Date(iso).toLocaleDateString("ru-RU", opts);
 }
 
-function formatTime(iso) {
+function formatTime(iso, timeZone = undefined) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const opts = { hour: "2-digit", minute: "2-digit" };
+  if (timeZone) opts.timeZone = timeZone;
+  return new Date(iso).toLocaleTimeString("ru-RU", opts);
 }
 
 function formatDateTime(iso) {
@@ -257,8 +256,8 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
                             ) : "—"}
                           </td>
                           <td style={s.td}>{b.master?.name || "—"}</td>
-                          <td style={s.td}>{formatDate(b.scheduledAt)}</td>
-                          <td style={s.td}>{formatTime(b.scheduledAt)}</td>
+                          <td style={s.td}>{formatDate(b.scheduledAt, SALON_TIMEZONE)}</td>
+                          <td style={s.td}>{formatTime(b.scheduledAt, SALON_TIMEZONE)}</td>
                           <td style={s.td}>
                             <span
                               style={{

@@ -4,6 +4,7 @@ import {
   getServices,
   getMasters,
   getAvailability,
+  getMasterWorkingDays,
   setBookingService,
   setBookingMaster,
   setBookingTime,
@@ -125,14 +126,24 @@ function serviceButtonLabel(s: ServiceItem): string {
   return formatServiceButtonLabel(s)
 }
 
-function slotLabel(isoUtc: string, timezone: string): string {
+function slotLabel(isoUtc: string): string {
   const date = new Date(isoUtc)
   return date.toLocaleTimeString("ru-RU", {
-    timeZone: timezone,
+    timeZone: SALON_TIMEZONE,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   })
+}
+
+/** ISO weekday (1–7) for a date string in salon TZ. Matches backend Luxon weekday. */
+const WEEKDAY_NAMES: Record<string, number> = {
+  Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7,
+}
+function getWeekdayInSalonTz(dateStr: string): number {
+  const d = new Date(dateStr + "T12:00:00Z")
+  const name = d.toLocaleDateString("en-US", { timeZone: SALON_TIMEZONE, weekday: "long" })
+  return WEEKDAY_NAMES[name] ?? 1
 }
 
 /** Next 14 days starting from tomorrow (booking on current day not allowed). */
@@ -152,6 +163,30 @@ function getNext14Days(): { date: string; label: string }[] {
     out.push({ date, label })
   }
   return out
+}
+
+/** Next dates (up to DATE_DAYS_SHOWN) that fall on the master's working weekdays. */
+async function getNext14DaysForMaster(masterId: string): Promise<{ date: string; label: string }[]> {
+  const dayOfWeeks = await getMasterWorkingDays(masterId)
+  if (dayOfWeeks.length === 0) return []
+  const todayStr = todayStrInSalonTz()
+  const candidates: { date: string; label: string }[] = []
+  for (let i = 1; i <= DATE_RANGE_DAYS && candidates.length < DATE_DAYS_SHOWN; i++) {
+    const d = new Date(todayStr + "T12:00:00Z")
+    d.setUTCDate(d.getUTCDate() + i)
+    const date = dateStrInSalonTz(d)
+    const wd = getWeekdayInSalonTz(date)
+    if (dayOfWeeks.includes(wd)) {
+      const label = d.toLocaleDateString("ru-RU", {
+        timeZone: SALON_TIMEZONE,
+        weekday: "short",
+        month: "2-digit",
+        day: "2-digit",
+      })
+      candidates.push({ date, label })
+    }
+  }
+  return candidates
 }
 
 /** Date must be after today and within 60 days (no same-day booking). */
@@ -370,7 +405,7 @@ export async function onMasterChosen(ctx: Context, masterId: string): Promise<vo
     })
     console.log("[wizard] step: master chosen", masterId)
 
-    const days = getNext14Days()
+    const days = await getNext14DaysForMaster(masterId)
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
       keyboard.text(days[i].label, `day:${days[i].date}`)
@@ -403,7 +438,7 @@ export async function onDayChosen(ctx: Context, dateStr: string): Promise<void> 
     const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
     if (slots.length === 0) {
       setBookingSession(telegramId, { step: "date" })
-      const days = getNext14Days()
+      const days = await getNext14DaysForMaster(masterId)
       const keyboard = new InlineKeyboard()
       for (let i = 0; i < days.length; i++) {
         keyboard.text(days[i].label, `day:${days[i].date}`)
@@ -421,7 +456,7 @@ export async function onDayChosen(ctx: Context, dateStr: string): Promise<void> 
     const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < toShow.length; i++) {
-      keyboard.text(slotLabel(toShow[i], timezone), `t:${toShow[i]}`)
+      keyboard.text(slotLabel(toShow[i]), `t:${toShow[i]}`)
       if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
     }
     const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите время:"
@@ -435,7 +470,7 @@ export async function onDayChosen(ctx: Context, dateStr: string): Promise<void> 
         : "Не удалось загрузить слоты. Попробуйте другую дату.",
       show_alert: true,
     }).catch(() => {})
-    const days = getNext14Days()
+    const days = await getNext14DaysForMaster(masterId)
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
       keyboard.text(days[i].label, `day:${days[i].date}`)
@@ -505,7 +540,7 @@ export async function onDateEntered(
   const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
   if (slots.length === 0) {
     setBookingSession(telegramId, { step: "date" })
-    const days = getNext14Days()
+    const days = await getNext14DaysForMaster(masterId)
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
       keyboard.text(days[i].label, `day:${days[i].date}`)
@@ -523,7 +558,7 @@ export async function onDateEntered(
   const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
   const keyboard = new InlineKeyboard()
   for (let i = 0; i < toShow.length; i++) {
-    keyboard.text(slotLabel(toShow[i], timezone), `t:${toShow[i]}`)
+    keyboard.text(slotLabel(toShow[i]), `t:${toShow[i]}`)
     if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
   }
   const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите время:"
@@ -692,7 +727,7 @@ async function showTimeSelection(
   const { timezone, slots } = await getAvailability(serviceId, masterId, dateStr)
   if (slots.length === 0) {
     setBookingSession(telegramId, { step: "date" })
-    const days = getNext14Days()
+    const days = await getNext14DaysForMaster(masterId)
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
       keyboard.text(days[i].label, `day:${days[i].date}`)
@@ -708,7 +743,7 @@ async function showTimeSelection(
   const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
   const keyboard = new InlineKeyboard()
   for (let i = 0; i < toShow.length; i++) {
-    keyboard.text(slotLabel(toShow[i], timezone), `t:${toShow[i]}`)
+    keyboard.text(slotLabel(toShow[i]), `t:${toShow[i]}`)
     if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
   }
   const text = buildSummary(getBookingSession(telegramId)) + `\n\n${headerMessage}`
@@ -734,6 +769,7 @@ export async function onEditTime(ctx: Context): Promise<void> {
 export async function onEditDate(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
+  const session = getBookingSession(telegramId)
   setBookingSession(telegramId, {
     step: "date",
     timeStr: undefined,
@@ -741,7 +777,9 @@ export async function onEditDate(ctx: Context): Promise<void> {
     dateStr: undefined,
     confirm: { ...EMPTY_CONFIRM_STATE },
   })
-  const days = getNext14Days()
+  const days = session.masterId
+    ? await getNext14DaysForMaster(session.masterId)
+    : getNext14Days()
   const keyboard = new InlineKeyboard()
   for (let i = 0; i < days.length; i++) {
     keyboard.text(days[i].label, `day:${days[i].date}`)
@@ -809,7 +847,7 @@ export async function onTimeBack(ctx: Context): Promise<void> {
   if (!masterId) return
   try {
     setBookingSession(telegramId, { step: "date", timeStr: undefined })
-    const days = getNext14Days()
+    const days = await getNext14DaysForMaster(masterId)
     const keyboard = new InlineKeyboard()
     for (let i = 0; i < days.length; i++) {
       keyboard.text(days[i].label, `day:${days[i].date}`)

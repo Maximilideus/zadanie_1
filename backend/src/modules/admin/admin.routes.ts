@@ -268,6 +268,7 @@ export async function adminRoutes(app: FastifyInstance) {
     isVisibleOnWebsite: true,
     sortOrder: true,
     masterServices: { select: { serviceId: true } },
+    workingHours: { select: { id: true, dayOfWeek: true, startTime: true, endTime: true } },
   } as const
 
   const masterCreateBody = z.object({
@@ -281,6 +282,12 @@ export async function adminRoutes(app: FastifyInstance) {
     serviceIds: z.array(z.string().uuid()).optional(),
   })
 
+  const workingHourRow = z.object({
+    dayOfWeek: z.number().int().min(1, "dayOfWeek 1–7").max(7),
+    startTime: z.string().regex(/^\d{1,2}:\d{2}$/, "startTime HH:MM"),
+    endTime: z.string().regex(/^\d{1,2}:\d{2}$/, "endTime HH:MM"),
+  }).refine((r) => r.startTime < r.endTime, { message: "startTime должен быть раньше endTime", path: ["endTime"] })
+
   const masterPatchBody = z.object({
     name: z.string().min(1, "Имя обязательно").optional(),
     photoUrl: z.string().nullable().optional(),
@@ -289,6 +296,7 @@ export async function adminRoutes(app: FastifyInstance) {
     isVisibleOnWebsite: z.boolean().optional(),
     sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
     serviceIds: z.array(z.string().uuid()).optional(),
+    workingHours: z.array(workingHourRow).optional(),
   })
 
   function flattenMaster(m: { masterServices: { serviceId: string }[]; [key: string]: unknown }) {
@@ -391,7 +399,7 @@ export async function adminRoutes(app: FastifyInstance) {
       })
     }
 
-    const { serviceIds, ...profileFields } = body.data
+    const { serviceIds, workingHours: workingHoursPayload, ...profileFields } = body.data
 
     if (serviceIds !== undefined) {
       await prisma.$transaction([
@@ -400,6 +408,25 @@ export async function adminRoutes(app: FastifyInstance) {
           prisma.masterService.create({ data: { masterId: id, serviceId: sid } }),
         ),
       ])
+    }
+
+    if (workingHoursPayload !== undefined) {
+      const firstLocation = await prisma.location.findFirst()
+      const locationId = existing.locationId ?? firstLocation?.id ?? null
+      if (locationId) {
+        await prisma.workingHour.deleteMany({ where: { masterId: id } })
+        if (workingHoursPayload.length > 0) {
+          await prisma.workingHour.createMany({
+            data: workingHoursPayload.map((row) => ({
+              masterId: id,
+              locationId,
+              dayOfWeek: row.dayOfWeek,
+              startTime: row.startTime,
+              endTime: row.endTime,
+            })),
+          })
+        }
+      }
     }
 
     const master = await prisma.user.update({
