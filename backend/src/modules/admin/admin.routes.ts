@@ -256,17 +256,125 @@ export async function adminRoutes(app: FastifyInstance) {
     }
   })
 
-  // ── Masters list (for filters) ────────────────────────────────
+  // ── Masters ──────────────────────────────────────────────────
+
+  const masterSelect = {
+    id: true,
+    name: true,
+    email: true,
+    photoUrl: true,
+    publicTitleRu: true,
+    isActive: true,
+    isVisibleOnWebsite: true,
+    sortOrder: true,
+  } as const
+
+  const masterCreateBody = z.object({
+    name: z.string().min(1, "Имя обязательно"),
+    email: z.string().email("Невалидный email"),
+    photoUrl: z.string().nullable().optional(),
+    publicTitleRu: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+    isVisibleOnWebsite: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+  })
+
+  const masterPatchBody = z.object({
+    name: z.string().min(1, "Имя обязательно").optional(),
+    photoUrl: z.string().nullable().optional(),
+    publicTitleRu: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+    isVisibleOnWebsite: z.boolean().optional(),
+    sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+  })
 
   app.get("/masters", {
     preHandler: adminPreHandlers,
   }, async () => {
     const masters = await prisma.user.findMany({
       where: { role: "MASTER" },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
+      select: masterSelect,
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     })
     return { masters }
+  })
+
+  app.post("/masters", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = masterCreateBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email: body.data.email } })
+    if (existing) {
+      return reply.status(409).send({
+        statusCode: 409,
+        error: "Conflict",
+        message: "Пользователь с таким email уже существует",
+      })
+    }
+
+    const bcrypt = await import("bcrypt")
+    const randomPassword = crypto.randomUUID()
+    const hashed = await bcrypt.default.hash(randomPassword, 10)
+
+    const location = await prisma.location.findFirst()
+
+    const master = await prisma.user.create({
+      data: {
+        name: body.data.name,
+        email: body.data.email,
+        password: hashed,
+        role: "MASTER",
+        state: "IDLE",
+        locationId: location?.id ?? null,
+        photoUrl: body.data.photoUrl ?? null,
+        publicTitleRu: body.data.publicTitleRu ?? null,
+        isActive: body.data.isActive ?? true,
+        isVisibleOnWebsite: body.data.isVisibleOnWebsite ?? true,
+        sortOrder: body.data.sortOrder ?? 0,
+      },
+      select: masterSelect,
+    })
+
+    return reply.status(201).send({ master })
+  })
+
+  app.patch("/masters/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const body = masterPatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const existing = await prisma.user.findUnique({ where: { id } })
+    if (!existing || existing.role !== "MASTER") {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Мастер не найден",
+      })
+    }
+
+    const master = await prisma.user.update({
+      where: { id },
+      data: body.data,
+      select: masterSelect,
+    })
+
+    return { master }
   })
 
   // ── Catalog ─────────────────────────────────────────────────

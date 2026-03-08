@@ -45,6 +45,12 @@ model User {
   locationId String?
   location   Location? @relation(fields: [locationId], references: [id])
 
+  photoUrl           String?
+  publicTitleRu      String?
+  isActive           Boolean @default(true)
+  isVisibleOnWebsite Boolean @default(true)
+  sortOrder          Int     @default(0)
+
   clientAppointments Appointment[]   @relation("ClientAppointments")
   masterAppointments Appointment[]   @relation("MasterAppointments")
   masterServices     MasterService[]

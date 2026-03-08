@@ -166,10 +166,9 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
           <div style={s.headerLeft}>
             <h1 style={s.title}>Каталог</h1>
             <nav style={s.nav}>
-              <button onClick={() => navigate("/admin/bookings")} style={s.navBtn}>
-                Записи
-              </button>
+              <button onClick={() => navigate("/admin/bookings")} style={s.navBtn}>Записи</button>
               <button style={{ ...s.navBtn, ...s.navBtnActive }}>Каталог</button>
+              <button onClick={() => navigate("/admin/masters")} style={s.navBtn}>Мастера</button>
             </nav>
           </div>
           <div style={s.headerRight}>

@@ -95,10 +95,43 @@ export async function getAdminMasters() {
     headers: authHeaders(),
   });
 
-  if (!res.ok) return [];
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить мастеров");
+  }
 
   const data = await res.json();
-  return data.masters;
+  return data.masters ?? [];
+}
+
+export async function createAdminMaster(fields) {
+  const res = await fetch(`${API_BASE}/admin/masters`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось создать мастера");
+  }
+
+  return res.json();
+}
+
+export async function updateAdminMaster(id, fields) {
+  const res = await fetch(`${API_BASE}/admin/masters/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось сохранить изменения");
+  }
+
+  return res.json();
 }
 
 export async function getAdminCatalog() {
