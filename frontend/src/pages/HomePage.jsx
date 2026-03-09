@@ -106,22 +106,35 @@ function WhyUsSection() {
   ];
 
   return (
-    <section className="land-section land-section--alt" ref={ref}>
+    <section className="land-section land-section--alt reasons-section" ref={ref}>
       <div className={`land-section-inner fade-in-up ${isVisible ? "visible" : ""}`}>
-        <p className="land-section-tag">Почему к нам возвращаются</p>
-        <h2 className="land-h2">6 причин выбрать нас</h2>
-        <div className="heroGrid" style={{ marginBottom: "32px" }}>
-          <div>
-            <h3 className="land-h3" style={{ marginTop: 0 }}>
-              Комфортная процедура в спокойной обстановке
-            </h3>
-            <p className="land-hero-sub" style={{ margin: 0 }}>
-              Работаем аккуратно, без спешки и лишних обещаний. Подбираем метод под зону, чувствительность кожи и ваш запрос. Объясняем, чего ожидать от процедуры и какой результат реалистичен.
-            </p>
+        <header className="reasons-section__header">
+          <p className="land-section-tag">Почему к нам возвращаются</p>
+          <h2 className="land-h2">6 причин выбрать нас</h2>
+        </header>
+        <div className="reasons-feature">
+          <div className="reasons-feature__grid">
+            <div className="reasons-feature__content">
+              <h3 className="land-h3 reasons-feature__title">
+                Комфортная процедура в спокойной обстановке
+              </h3>
+              <p className="land-hero-sub reasons-feature__body">
+                Работаем аккуратно, без спешки и лишних обещаний. Подбираем метод под зону, чувствительность кожи и ваш запрос. Объясняем, чего ожидать от процедуры и какой результат реалистичен. Перед процедурой всегда проводим короткую консультацию и отвечаем на вопросы.
+              </p>
+              <p className="land-hero-sub reasons-feature__body reasons-feature__body--extra">
+                Если сомневаетесь в выборе метода, поможем подобрать подходящий вариант под вашу зону и тип кожи.
+              </p>
+              <ul className="reasons-feature__bullets">
+                <li>Чистый кабинет и спокойная атмосфера</li>
+                <li>Метод подбираем под зону и тип кожи</li>
+                <li>Объясняем результат без завышенных обещаний</li>
+                <li>Помогаем выбрать подходящий метод процедуры</li>
+              </ul>
+            </div>
+            <img src="/images/clinic-treatment.jpg" alt="Кабинет и процедура" className="reasons-feature__image" />
           </div>
-          <img src="/images/clinic-treatment.jpg" alt="Кабинет и процедура" className="heroMedia" />
         </div>
-        <div className="land-advantages-grid">
+        <div className="land-advantages-grid reasons-section__cards">
           {cards.map((card, idx) => (
             <div key={idx} className="land-advantage-card" style={{ animationDelay: `${idx * 0.08}s` }}>
               <span className="land-advantage-icon">{card.icon}</span>
