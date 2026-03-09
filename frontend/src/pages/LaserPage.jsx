@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
 import { useCatalog } from "../hooks/useCatalog.js";
 import { CatalogPriceBlock } from "../components/CatalogPriceBlock.jsx";
+import { buildTelegramStartLink } from "../api/telegram.js";
 
 // ─── FAQ Item ─────────────────────────────────────────────────────────────────
 function FaqItem({ question, answer }) {
@@ -102,7 +103,7 @@ export function LaserPage({ botUrl }) {
             Параметры подбираются индивидуально.
           </p>
           <div className="service-hero-actions">
-            <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+            <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
               Записаться в Telegram
             </a>
             <span className="service-price-badge">от 800 ₽ за зону</span>
@@ -367,7 +368,7 @@ export function LaserPage({ botUrl }) {
           <CatalogPriceBlock data={catalogData} loading={catalogLoading} error={catalogError} />
 
           <div className="lp-price-cta">
-            <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+            <a href={buildTelegramStartLink("consult_zones")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
               Консультация и подбор зон
             </a>
           </div>
@@ -444,7 +445,7 @@ export function LaserPage({ botUrl }) {
             Консультация и тестовая вспышка — бесплатно. Ответим на вопросы, 
             подберём параметры, составим план курса.
           </p>
-          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-cta">
+          <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-cta">
             Записаться в Telegram
           </a>
         </div>

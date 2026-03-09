@@ -50,6 +50,7 @@ type CatalogItemRecord = {
   titleRu: string
   subtitleRu: string | null
   descriptionRu: string | null
+  sessionsNoteRu: string | null
   price: number | null
   durationMin: number | null
 }
@@ -62,6 +63,7 @@ export type CatalogItemDto = {
   title: string
   subtitle: string | null
   description: string | null
+  sessionsNoteRu: string | null
   price: number | null
   durationMin: number | null
 }
@@ -75,8 +77,9 @@ export function mapCatalogItemToDto(item: CatalogItemRecord): CatalogItemDto {
     title: item.titleRu,
     subtitle: item.subtitleRu,
     description: item.descriptionRu,
-    price: item.price,
-    durationMin: item.durationMin,
+    sessionsNoteRu: item.sessionsNoteRu ?? null,
+    price: item.price ?? null,
+    durationMin: item.durationMin ?? null,
   }
 }
 

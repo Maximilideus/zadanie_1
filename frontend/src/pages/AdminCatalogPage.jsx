@@ -48,7 +48,7 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
       const data = await getAdminCatalog();
       setItems(data);
     } catch (e) {
-      setError(e.message || "Ошибка загрузки");
+      setError(e.message || "Не удалось загрузить каталог");
     } finally {
       setLoading(false);
     }
@@ -72,6 +72,7 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
     setEditDraft({
       titleRu: item.titleRu,
       descriptionRu: item.descriptionRu ?? "",
+      sessionsNoteRu: item.sessionsNoteRu ?? "",
       price: item.price ?? "",
       durationMin: item.durationMin ?? "",
       isVisible: item.isVisible,
@@ -98,17 +99,18 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
 
     const titleVal = editDraft.titleRu.trim();
     if (!titleVal) {
-      setSaveError("Название не может быть пустым");
+      setSaveError("Укажите название");
       setSaving(false);
       return;
     }
     fields.titleRu = titleVal;
 
     fields.descriptionRu = editDraft.descriptionRu.trim() || null;
+    fields.sessionsNoteRu = editDraft.sessionsNoteRu.trim() || null;
 
     const priceVal = editDraft.price === "" ? null : Number(editDraft.price);
     if (priceVal !== null && (isNaN(priceVal) || priceVal < 0)) {
-      setSaveError("Цена должна быть >= 0");
+      setSaveError("Цена не может быть отрицательной");
       setSaving(false);
       return;
     }
@@ -116,7 +118,7 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
 
     const durVal = editDraft.durationMin === "" ? null : Number(editDraft.durationMin);
     if (durVal !== null && (isNaN(durVal) || durVal < 1)) {
-      setSaveError("Длительность должна быть > 0");
+      setSaveError("Длительность должна быть не меньше 1 минуты");
       setSaving(false);
       return;
     }
@@ -124,7 +126,7 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
 
     const sortVal = Number(editDraft.sortOrder);
     if (isNaN(sortVal) || sortVal < 0) {
-      setSaveError("Порядок сортировки >= 0");
+      setSaveError("Порядок сортировки не меньше 0");
       setSaving(false);
       return;
     }
@@ -137,7 +139,7 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
       setEditDraft({});
       await loadItems();
     } catch (e) {
-      setSaveError(e.message || "Ошибка сохранения");
+      setSaveError(e.message || "Не удалось сохранить");
     } finally {
       setSaving(false);
     }
@@ -206,11 +208,11 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
             <p style={{ ...s.msg, color: "#c44" }}>{error}</p>
           ) : sorted.length === 0 ? (
             <p style={s.msg}>
-              {filterCategory ? "Нет элементов в этой категории." : "Каталог пуст."}
+              {filterCategory ? "В этой категории нет позиций." : "В каталоге пока нет позиций."}
             </p>
           ) : (
             <>
-              <div style={s.count}>Показано {sorted.length} элементов</div>
+              <div style={s.count}>Позиций: {sorted.length}</div>
               <div style={s.tableWrap}>
                 <table style={s.table}>
                   <thead>
@@ -219,10 +221,11 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                       <th style={s.th}>Тип</th>
                       <th style={s.th}>Название</th>
                       <th style={s.th}>Описание</th>
+                      <th style={s.th}>Кол-во сеансов / примечание</th>
                       <th style={s.th}>Цена</th>
-                      <th style={s.th}>Длит.</th>
+                      <th style={s.th}>Длительность</th>
                       <th style={s.th}>Порядок</th>
-                      <th style={s.th}>Видим.</th>
+                      <th style={s.th}>На сайте</th>
                       <th style={s.th}>Сервис</th>
                       <th style={s.th}>Действия</th>
                     </tr>
@@ -255,6 +258,14 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                                 value={editDraft.descriptionRu}
                                 onChange={(e) => handleDraftChange("descriptionRu", e.target.value)}
                                 placeholder="—"
+                              />
+                            </td>
+                            <td style={s.td}>
+                              <input
+                                style={s.editInput}
+                                value={editDraft.sessionsNoteRu}
+                                onChange={(e) => handleDraftChange("sessionsNoteRu", e.target.value)}
+                                placeholder="например: 6–8 сеансов"
                               />
                             </td>
                             <td style={s.td}>
@@ -337,6 +348,9 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                           <td style={s.td}>
                             <span style={s.subText}>{item.descriptionRu || "—"}</span>
                           </td>
+                          <td style={s.td}>
+                            <span style={s.subText}>{item.sessionsNoteRu || "—"}</span>
+                          </td>
                           <td style={s.td}>{item.price != null ? `${item.price} ₽` : "—"}</td>
                           <td style={s.td}>{item.durationMin != null ? `${item.durationMin} мин` : "—"}</td>
                           <td style={s.td}>{item.sortOrder}</td>
@@ -344,7 +358,7 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                             <button
                               onClick={() => handleToggleVisibility(item)}
                               style={s.visToggle}
-                              title={item.isVisible ? "Скрыть" : "Показать"}
+                              title={item.isVisible ? "Скрыть с сайта" : "Показать на сайте"}
                             >
                               {item.isVisible ? "👁" : "🚫"}
                             </button>

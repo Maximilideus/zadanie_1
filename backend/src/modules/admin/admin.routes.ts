@@ -43,6 +43,7 @@ const statusPatchBody = z.object({
 const catalogPatchBody = z.object({
   titleRu: z.string().min(1, "titleRu не может быть пустым").optional(),
   descriptionRu: z.string().nullable().optional(),
+  sessionsNoteRu: z.string().nullable().optional(),
   price: z.number().int().min(0, "price >= 0").nullable().optional(),
   durationMin: z.number().int().min(1, "durationMin > 0").nullable().optional(),
   isVisible: z.boolean().optional(),
@@ -522,6 +523,7 @@ export async function adminRoutes(app: FastifyInstance) {
         titleRu: true,
         subtitleRu: true,
         descriptionRu: true,
+        sessionsNoteRu: true,
         price: true,
         durationMin: true,
         isVisible: true,
@@ -580,6 +582,7 @@ export async function adminRoutes(app: FastifyInstance) {
         titleRu: true,
         subtitleRu: true,
         descriptionRu: true,
+        sessionsNoteRu: true,
         price: true,
         durationMin: true,
         isVisible: true,

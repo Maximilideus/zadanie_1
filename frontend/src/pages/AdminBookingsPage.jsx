@@ -93,7 +93,7 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
       const data = await getAdminBookings(params);
       setBookings(data);
     } catch (e) {
-      setError(e.message || "Ошибка загрузки");
+      setError(e.message || "Не удалось загрузить записи");
     } finally {
       setLoading(false);
     }
@@ -217,12 +217,12 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
             <p style={{ ...s.msg, color: "#c44" }}>{error}</p>
           ) : bookings.length === 0 ? (
             <p style={s.msg}>
-              {hasFilters ? "Нет записей по выбранным фильтрам." : "Записей пока нет."}
+              {hasFilters ? "По выбранным фильтрам записей не найдено." : "Записей пока нет."}
             </p>
           ) : (
             <>
               <div style={s.count}>
-                Показано {bookings.length} записей
+                Найдено записей: {bookings.length}
               </div>
               <div style={s.tableWrap}>
                 <table style={s.table}>

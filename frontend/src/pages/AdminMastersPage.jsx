@@ -36,7 +36,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
       const data = await getAdminMasters();
       setMasters(data);
     } catch (e) {
-      setError(e.message || "Ошибка загрузки");
+      setError(e.message || "Не удалось загрузить список мастеров");
     } finally {
       setLoading(false);
     }
@@ -56,12 +56,12 @@ export function AdminMastersPage({ adminUser, onLogout }) {
   const handleCreate = async () => {
     setCreateError("");
     const name = createDraft.name.trim();
-    if (!name) { setCreateError("Имя обязательно"); return; }
+    if (!name) { setCreateError("Укажите имя"); return; }
     const email = createDraft.email.trim();
-    if (!email) { setCreateError("Email обязателен"); return; }
+    if (!email) { setCreateError("Укажите email"); return; }
 
     const sortVal = Number(createDraft.sortOrder);
-    if (isNaN(sortVal) || sortVal < 0) { setCreateError("Порядок >= 0"); return; }
+    if (isNaN(sortVal) || sortVal < 0) { setCreateError("Порядок сортировки не меньше 0"); return; }
 
     setCreating(true);
     try {
@@ -77,7 +77,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
       setCreateDraft(emptyCreate());
       await loadMasters();
     } catch (e) {
-      setCreateError(e.message || "Ошибка создания");
+      setCreateError(e.message || "Не удалось создать мастера");
     } finally {
       setCreating(false);
     }
@@ -118,10 +118,10 @@ export function AdminMastersPage({ adminUser, onLogout }) {
   const handleSave = async () => {
     setSaveError("");
     const name = editDraft.name.trim();
-    if (!name) { setSaveError("Имя обязательно"); setSaving(false); return; }
+    if (!name) { setSaveError("Укажите имя"); setSaving(false); return; }
 
     const sortVal = Number(editDraft.sortOrder);
-    if (isNaN(sortVal) || sortVal < 0) { setSaveError("Порядок >= 0"); setSaving(false); return; }
+    if (isNaN(sortVal) || sortVal < 0) { setSaveError("Порядок сортировки не меньше 0"); setSaving(false); return; }
 
     setSaving(true);
     try {
@@ -153,7 +153,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
       setEditDraft({});
       await loadMasters();
     } catch (e) {
-      setSaveError(e.message || "Ошибка сохранения");
+      setSaveError(e.message || "Не удалось сохранить изменения");
     } finally {
       setSaving(false);
     }
@@ -234,7 +234,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
             onClick={() => { setShowCreate(!showCreate); setCreateError(""); }}
             style={s.addBtn}
           >
-            {showCreate ? "Отмена" : "+ Добавить мастера"}
+            {showCreate ? "Отмена" : "+ Новый мастер"}
           </button>
           <button onClick={loadMasters} disabled={loading} style={s.refreshBtn}>
             {loading ? "…" : "Обновить"}
@@ -263,13 +263,13 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                   placeholder="https://..." />
               </label>
               <label style={s.fieldLabel}>
-                Публичная должность
+                Должность на сайте
                 <input style={s.input} value={createDraft.publicTitleRu}
                   onChange={(e) => setCreateDraft({ ...createDraft, publicTitleRu: e.target.value })}
-                  placeholder="Депиляция" />
+                  placeholder="Например: Депиляция" />
               </label>
               <label style={s.fieldLabel}>
-                Порядок сортировки
+                Порядок (0, 1, 2…)
                 <input style={s.input} type="number" min="0" value={createDraft.sortOrder}
                   onChange={(e) => setCreateDraft({ ...createDraft, sortOrder: e.target.value })} />
               </label>
@@ -295,7 +295,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
             )}
             {createError && <p style={s.formError}>{createError}</p>}
             <button onClick={handleCreate} disabled={creating} style={s.createBtn}>
-              {creating ? "Создание…" : "Создать мастера"}
+              {creating ? "Создание…" : "Создать"}
             </button>
           </div>
         )}
@@ -307,18 +307,18 @@ export function AdminMastersPage({ adminUser, onLogout }) {
           ) : error ? (
             <p style={{ ...s.msg, color: "#c44" }}>{error}</p>
           ) : masters.length === 0 ? (
-            <p style={s.msg}>Мастера не найдены.</p>
+            <p style={s.msg}>Нет мастеров. Добавьте первого.</p>
           ) : (
             <>
-              <div style={s.count}>Всего мастеров: {masters.length}</div>
+              <div style={s.count}>Мастеров: {masters.length}</div>
               <div style={s.tableWrap}>
                 <table style={s.table}>
                   <thead>
                     <tr>
                       <th style={s.th}>Имя</th>
                       <th style={s.th}>Должность</th>
-                      <th style={s.th}>Фото URL</th>
-                      <th style={s.th}>Актив.</th>
+                      <th style={s.th}>Фото</th>
+                      <th style={s.th}>В записи</th>
                       <th style={s.th}>На сайте</th>
                       <th style={s.th}>Порядок</th>
                       <th style={s.th}>Услуги</th>
@@ -347,12 +347,12 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                                   onChange={(e) => handleDraftChange("photoUrl", e.target.value)}
                                   placeholder="https://..." />
                               </td>
-                              <td style={s.td}>
+                              <td style={s.td} title="Участвует в записи через бота">
                                 <input type="checkbox" checked={editDraft.isActive}
                                   onChange={(e) => handleDraftChange("isActive", e.target.checked)}
                                   style={s.checkbox} />
                               </td>
-                              <td style={s.td}>
+                              <td style={s.td} title="Показывать на публичном сайте">
                                 <input type="checkbox" checked={editDraft.isVisibleOnWebsite}
                                   onChange={(e) => handleDraftChange("isVisibleOnWebsite", e.target.checked)}
                                   style={s.checkbox} />
@@ -448,11 +448,11 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                             <tr style={s.trEditing}>
                               <td colSpan={8} style={s.td}>
                                 <div style={s.workingHoursSection}>
-                                  <p style={s.servicesTitle}>Исключения / выходные</p>
+                                  <p style={s.servicesTitle}>Выходные и отпуска</p>
                                   {exceptionsList.map((ex, idx) => (
                                     <div key={idx} style={s.workingHourRow}>
                                       <span style={s.exceptionTypeLabel}>
-                                        {ex.type === "DAY_OFF" ? "День off" : "Отпуск"}
+                                        {ex.type === "DAY_OFF" ? "Выходной" : "Отпуск"}
                                       </span>
                                       {ex.type === "DAY_OFF" ? (
                                         <input
@@ -492,10 +492,10 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                                   ))}
                                   <div style={s.exceptionAddRow}>
                                     <button type="button" onClick={() => addException("DAY_OFF")} style={s.addRowBtn}>
-                                      День off
+                                      Добавить выходной
                                     </button>
                                     <button type="button" onClick={() => addException("VACATION")} style={s.addRowBtn}>
-                                      Отпуск
+                                      Добавить отпуск
                                     </button>
                                   </div>
                                 </div>
@@ -527,7 +527,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                           </td>
                           <td style={s.td}>
                             <button onClick={() => handleToggle(m, "isActive")} style={s.toggleBtn}
-                              title={m.isActive ? "Деактивировать" : "Активировать"}>
+                              title={m.isActive ? "Исключить из записи" : "Включить в запись"}>
                               {m.isActive ? "✅" : "❌"}
                             </button>
                           </td>
@@ -541,7 +541,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                           <td style={s.td}>
                             <span style={s.serviceCount}>
                               {(m.serviceIds?.length || 0) > 0
-                                ? `${m.serviceIds.length} усл.`
+                                ? `${m.serviceIds.length} услуг`
                                 : <span style={s.subText}>—</span>}
                             </span>
                           </td>

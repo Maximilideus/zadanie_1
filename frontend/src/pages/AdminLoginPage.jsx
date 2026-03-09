@@ -14,7 +14,7 @@ export function AdminLoginPage({ onLoginSuccess }) {
     setError("");
 
     if (!email.trim() || !password.trim()) {
-      setError("Введите логин и пароль");
+      setError("Введите email и пароль");
       return;
     }
 
@@ -24,7 +24,7 @@ export function AdminLoginPage({ onLoginSuccess }) {
       onLoginSuccess();
       navigate("/admin/bookings", { replace: true });
     } catch (err) {
-      setError(err.message || "Неверный логин или пароль");
+      setError(err.message || "Неверный email или пароль");
     } finally {
       setLoading(false);
     }
@@ -33,7 +33,7 @@ export function AdminLoginPage({ onLoginSuccess }) {
   return (
     <div style={styles.wrapper}>
       <form onSubmit={handleSubmit} style={styles.card}>
-        <h1 style={styles.title}>Вход в админ-панель</h1>
+        <h1 style={styles.title}>Вход в панель управления</h1>
 
         {error && <div style={styles.error}>{error}</div>}
 

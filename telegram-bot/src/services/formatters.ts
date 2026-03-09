@@ -3,30 +3,47 @@ import { SALON_TIMEZONE } from "../config/salon.js"
 export type ServiceLike = { name: string; durationMin?: number }
 export type MasterLike = { name: string }
 
+/** Massage subtype: internal name -> Russian (full name for display). */
+const MASSAGE_SUBTYPE_RU: Record<string, string> = {
+  Lymph: "Лимфодренажный массаж",
+  Relax: "Релакс-массаж",
+  Sport: "Спортивный массаж",
+  Classic: "Классический массаж",
+}
+
+/** Service name in Russian WITHOUT duration (show duration on separate line). */
+export function formatServiceNameOnly(service: ServiceLike): string {
+  const raw = (service.name ?? "").trim()
+  if (raw.startsWith("Waxing")) return "Восковая депиляция"
+  if (raw.startsWith("Laser")) return "Лазерная эпиляция"
+  if (raw.startsWith("Electro")) return "Электроэпиляция"
+  if (raw.startsWith("Massage")) {
+    const subtype = raw.replace(/^Massage\s+/, "").replace(/\s+\d+\s*min\s*$/i, "").trim()
+    return (subtype && MASSAGE_SUBTYPE_RU[subtype]) ? MASSAGE_SUBTYPE_RU[subtype] : (subtype ? `Массаж ${subtype}` : "Массаж")
+  }
+  const withoutMin = raw.replace(/\s+\d+\s*min\s*$/i, "").trim()
+  return withoutMin || raw
+}
+
 /**
- * Converts DB service names (English) to Russian display names without changing DB values.
- * Examples:
- * - "Waxing 15 min" -> "Восковая депиляция — 15 мин"
- * - "Laser 30 min"  -> "Лазерная эпиляция — 30 мин"
- * - "Electro 60 min" -> "Электроэпиляция — 60 мин"
- * - "Massage Relax 60 min" -> "Массаж Relax — 60 мин"
+ * Converts DB service names to Russian display names with duration (for buttons).
+ * For confirm/list use formatServiceNameOnly + separate "Длительность" line.
  */
 export function formatServiceDisplayName(service: ServiceLike): string {
   const raw = service.name ?? ""
   const durationMin = service.durationMin ?? extractDurationMin(raw)
   const duration = durationMin ? `${durationMin} мин` : "—"
-
+  const nameOnly = formatServiceNameOnly(service)
   if (raw.startsWith("Waxing")) return `Восковая депиляция — ${duration}`
   if (raw.startsWith("Laser")) return `Лазерная эпиляция — ${duration}`
   if (raw.startsWith("Electro")) return `Электроэпиляция — ${duration}`
-  if (raw.startsWith("Massage")) {
-    const subtype = raw
-      .replace(/^Massage\\s+/, "")
-      .replace(/\\s+\\d+\\s+min\\s*$/, "")
-      .trim()
-    return subtype.length > 0 ? `Массаж ${subtype} — ${duration}` : `Массаж — ${duration}`
-  }
+  if (raw.startsWith("Massage")) return `${nameOnly} — ${duration}`
   return durationMin ? `${raw} — ${duration}` : raw
+}
+
+/** Removes trailing " — N мин" from a display string. */
+export function stripTrailingDuration(s: string): string {
+  return (s ?? "").replace(/\s*—\s*\d+\s*мин\s*$/i, "").trim() || (s ?? "")
 }
 
 /**

@@ -56,8 +56,8 @@ const GROUP_KEY_TITLES: Record<string, string> = {
 }
 
 const GENDER_LABELS: Record<string, string> = {
-  female: "Женские",
-  male: "Мужские",
+  female: "Женщинам",
+  male: "Мужчинам",
   unisex: "",
 }
 
@@ -90,7 +90,7 @@ export async function showCategorySelection(ctx: Context): Promise<void> {
     keyboard.text(cat.label, `cat:${cat.slug}`).row()
   }
 
-  await editOrSend(ctx, from.id, "Выберите услугу:", keyboard)
+  await editOrSend(ctx, from.id, "Выберите категорию услуги:", keyboard)
 }
 
 // ── Category chosen → show gender/group selection ───────────────────
@@ -125,7 +125,7 @@ export async function onCategoryChosen(ctx: Context, slug: CategorySlug): Promis
   // Laser / Wax: check if multiple genders
   const genderKeys = Object.keys(sections)
   if (genderKeys.length === 0) {
-    await editOrSend(ctx, from.id, "Каталог пока пуст.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "В этой категории пока нет позиций.", new InlineKeyboard())
     return
   }
 
@@ -143,7 +143,7 @@ export async function onCategoryChosen(ctx: Context, slug: CategorySlug): Promis
     }
   }
   keyboard.text("◀️ Назад", "cat_back")
-  await editOrSend(ctx, from.id, `${CATEGORY_LABEL_RU[slug] ?? slug}\n\nВыберите:`, keyboard)
+  await editOrSend(ctx, from.id, `${CATEGORY_LABEL_RU[slug] ?? slug}\n\nДля кого выбираем зону?`, keyboard)
 }
 
 // ── Gender chosen → show zone groups ────────────────────────────────
@@ -160,13 +160,13 @@ export async function onGenderChosen(
   try {
     grouped = await getCatalogGrouped(slug)
   } catch {
-    await editOrSend(ctx, from.id, "Не удалось загрузить каталог.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "Не удалось загрузить каталог. Попробуйте позже.", new InlineKeyboard())
     return
   }
 
   const genderSections = grouped.sections[genderKey]
   if (!genderSections) {
-    await editOrSend(ctx, from.id, "Каталог пока пуст.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "В этой категории пока нет позиций.", new InlineKeyboard())
     return
   }
 
@@ -193,7 +193,7 @@ async function showZoneGroups(
   for (const gk of groupKeys) {
     keyboard.text(groupTitle(gk), `zgrp:${slug}:${genderKey}:${gk}`).row()
   }
-  keyboard.text("📋 Несколько зон / нужна консультация", `consult:${slug}`).row()
+  keyboard.text("📋 Несколько зон или консультация", `consult:${slug}`).row()
   keyboard.text("◀️ Назад", hasGenderStep ? `cat:${slug}` : "cat_back")
 
   const genderLabel = GENDER_LABELS[genderKey]
@@ -219,13 +219,13 @@ export async function onZoneGroupChosen(
   try {
     grouped = await getCatalogGrouped(slug)
   } catch {
-    await editOrSend(ctx, from.id, "Не удалось загрузить каталог.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "Не удалось загрузить каталог. Попробуйте позже.", new InlineKeyboard())
     return
   }
 
   const items = grouped.sections[genderKey]?.[groupKey]?.items
   if (!items || items.length === 0) {
-    await editOrSend(ctx, from.id, "Нет доступных позиций.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "В этой зоне пока нет позиций.", new InlineKeyboard())
     return
   }
 
@@ -238,11 +238,11 @@ export async function onZoneGroupChosen(
     const label = price ? `${item.title} — ${price}` : item.title
     keyboard.text(label, `ci:${item.id}`).row()
   }
-  keyboard.text("📋 Несколько зон / нужна консультация", `consult:${slug}`).row()
+  keyboard.text("📋 Несколько зон или консультация", `consult:${slug}`).row()
   keyboard.text("◀️ Назад", `gender:${slug}:${genderKey}`)
 
   const header = `${CATEGORY_LABEL_RU[slug] ?? slug} — ${groupTitle(groupKey)}`
-  await editOrSend(ctx, from.id, `${header}\n\nВыберите область:`, keyboard)
+  await editOrSend(ctx, from.id, `${header}\n\nВыберите позицию:`, keyboard)
 }
 
 // ── Catalog item chosen → resolve and start booking ─────────────────
@@ -253,13 +253,13 @@ export async function onCatalogItemChosen(ctx: Context, catalogItemId: string): 
 
   const item = await getCatalogItemById(catalogItemId)
   if (!item || !item.isVisible) {
-    await ctx.answerCallbackQuery({ text: "Позиция не найдена.", show_alert: true }).catch(() => {})
+    await ctx.answerCallbackQuery({ text: "Позиция не найдена или скрыта.", show_alert: true }).catch(() => {})
     return
   }
 
   if (!item.serviceId || !item.service) {
     await ctx.answerCallbackQuery({
-      text: "Для этой позиции прямая запись недоступна.",
+      text: "Для этой позиции запись через бота недоступна.",
       show_alert: true,
     }).catch(() => {})
     return
@@ -273,7 +273,7 @@ export async function onCatalogItemChosen(ctx: Context, catalogItemId: string): 
   const durationChanged = prevDuration != null && prevDuration !== newDuration
 
   const introText = durationChanged
-    ? "Вы изменили зону.\nВыберите мастера и время заново."
+    ? "Зона изменена. Выберите мастера и время заново."
     : buildCatalogIntro(item)
 
   await startWizardWithService(
@@ -340,7 +340,7 @@ async function showElectroZoneGroups(
 
   const groupKeys = Array.from(allGroups.keys())
   if (groupKeys.length === 0) {
-    await editOrSend(ctx, telegramId, "Каталог электроэпиляции пока пуст.", new InlineKeyboard())
+    await editOrSend(ctx, telegramId, "В категории «Электроэпиляция» пока нет позиций.", new InlineKeyboard())
     return
   }
 
@@ -352,7 +352,7 @@ async function showElectroZoneGroups(
       keyboard.text(groupTitle(gk), `ezone:${gk}`).row()
     }
   }
-  keyboard.text("📋 Несколько зон / нужна консультация", "consult:electro").row()
+  keyboard.text("📋 Несколько зон или консультация", "consult:electro").row()
   keyboard.text("◀️ Назад", "cat_back")
 
   await editOrSend(ctx, telegramId, "Электроэпиляция\n\nВыберите зону:", keyboard)
@@ -371,7 +371,7 @@ export async function onElectroZoneGroupChosen(
   try {
     grouped = await getCatalogGrouped("electro")
   } catch {
-    await editOrSend(ctx, from.id, "Не удалось загрузить каталог.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "Не удалось загрузить каталог. Попробуйте позже.", new InlineKeyboard())
     return
   }
 
@@ -382,13 +382,13 @@ export async function onElectroZoneGroupChosen(
   }
 
   if (items.length === 0) {
-    await editOrSend(ctx, from.id, "Нет доступных зон.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "В этой зоне пока нет позиций.", new InlineKeyboard())
     return
   }
 
   const bookable = items.filter((i) => i.price != null && i.durationMin != null)
   if (bookable.length === 0) {
-    await editOrSend(ctx, from.id, "Нет доступных зон для записи.", new InlineKeyboard().text("◀️ Назад", "cat:electro"))
+    await editOrSend(ctx, from.id, "Нет позиций с возможностью записи.", new InlineKeyboard().text("◀️ Назад", "cat:electro"))
     return
   }
 
@@ -423,13 +423,13 @@ export async function onElectroZoneSelected(
   })
 
   if (!item || !item.isVisible) {
-    await ctx.answerCallbackQuery({ text: "Позиция не найдена.", show_alert: true }).catch(() => {})
+    await ctx.answerCallbackQuery({ text: "Позиция не найдена или скрыта.", show_alert: true }).catch(() => {})
     return
   }
 
   if (!item.serviceId || !item.service) {
     await ctx.answerCallbackQuery({
-      text: "Для этой зоны прямая запись недоступна.",
+      text: "Для этой зоны запись через бота недоступна.",
       show_alert: true,
     }).catch(() => {})
     return
@@ -464,7 +464,7 @@ export async function onElectroInfoChosen(ctx: Context, groupKey: string): Promi
   try {
     grouped = await getCatalogGrouped("electro")
   } catch {
-    await editOrSend(ctx, from.id, "Не удалось загрузить каталог.", new InlineKeyboard())
+    await editOrSend(ctx, from.id, "Не удалось загрузить каталог. Попробуйте позже.", new InlineKeyboard())
     return
   }
 
@@ -502,7 +502,7 @@ async function showMassageTypes(
   }
 
   if (items.length === 0) {
-    await editOrSend(ctx, telegramId, "Каталог массажа пока пуст.", new InlineKeyboard())
+    await editOrSend(ctx, telegramId, "В категории «Массаж» пока нет позиций.", new InlineKeyboard())
     return
   }
 
@@ -533,9 +533,8 @@ export async function onConsultationChosen(ctx: Context, slug: string): Promise<
     ctx,
     from.id,
     `${label}\n\n` +
-    "Для записи на несколько зон или подбора оптимального варианта, " +
-    "пожалуйста, свяжитесь с нами через консультацию.\n\n" +
-    "/consult — начать консультацию",
+    "Для записи на несколько зон или подбора услуги напишите в консультации.\n\n" +
+    "/consult — открыть консультацию",
     keyboard,
   )
 }
@@ -549,16 +548,11 @@ function buildCatalogIntro(item: {
   durationMin: number | null
 }): string {
   const category = CATEGORY_LABEL_RU[item.category.toLowerCase()] ?? item.category
-  const price = item.price != null ? `${item.price} ₽` : "—"
-  const duration = item.durationMin != null ? `${item.durationMin} мин` : "—"
-  return [
-    "Вы выбрали услугу:",
-    "",
-    category,
-    item.titleRu,
-    `Цена: ${price}`,
-    `Длительность: ${duration}`,
-  ].join("\n")
+  const lines = ["Вы выбрали:", "", category]
+  lines.push(`Зона: ${item.titleRu}`)
+  if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
+  if (item.price != null) lines.push(`Цена: ${item.price} ₽`)
+  return lines.join("\n")
 }
 
 async function editOrSend(

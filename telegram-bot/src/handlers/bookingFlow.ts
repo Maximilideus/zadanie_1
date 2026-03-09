@@ -20,6 +20,7 @@ import {
   formatBookingTime,
   formatBookingSummary,
   formatMasterDisplayName,
+  stripTrailingDuration,
 } from "../services/formatters.js"
 import type { ConfirmState } from "../session/bookingFlowSession.js"
 import { SALON_TIMEZONE } from "../config/salon.js"
@@ -32,6 +33,11 @@ const MASTER_BUTTONS_PER_ROW = 2
 const DAYS_BUTTONS_PER_ROW = 2
 const DATE_DAYS_SHOWN = 14
 const DATE_RANGE_DAYS = 60
+
+const NO_SLOTS_ON_DATE_MESSAGE =
+  "К сожалению, этот мастер в выбранную дату не принимает.\n\n" +
+  "Выберите другую дату из доступных ниже.\n" +
+  "Если ни одна дата не подходит, можно вернуться назад и выбрать другого мастера."
 
 function todayStrInSalonTz(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: SALON_TIMEZONE })
@@ -111,16 +117,15 @@ function isSessionReadyForConfirm(session: BookingSession): boolean {
 }
 
 function buildSummary(session: BookingSession): string {
-  const s = session.serviceName ?? "—"
+  const serviceNameOnly = stripTrailingDuration(session.serviceName ?? "—")
   const m = session.masterName ?? "—"
   const d = session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—"
   const t = session.timeStr ?? "—"
-  return [
-    "Услуга: " + s,
-    "Мастер: " + m,
-    "Дата: " + d,
-    "Время: " + t,
-  ].join("\n")
+  const lines = ["Услуга: " + serviceNameOnly]
+  if (session.catalogTitle) lines.push("Зона: " + session.catalogTitle)
+  if (session.durationMin != null) lines.push("Длительность: " + session.durationMin + " мин")
+  lines.push("Мастер: " + m, "Дата: " + d, "Время: " + t)
+  return lines.join("\n")
 }
 
 function serviceButtonLabel(s: ServiceItem): string {
@@ -475,8 +480,7 @@ export async function onDayChosen(ctx: Context, dateStr: string): Promise<void> 
       }
       keyboard.row().text("📅 Ввести дату", "manual_date")
       const text =
-        buildSummary(getBookingSession(telegramId)) +
-        "\n\nНа эту дату нет слотов. Выберите другую дату:"
+        buildSummary(getBookingSession(telegramId)) + "\n\n" + NO_SLOTS_ON_DATE_MESSAGE
       await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
       return
     }
@@ -577,8 +581,7 @@ export async function onDateEntered(
     }
     keyboard.row().text("📅 Ввести дату", "manual_date")
     const text =
-      buildSummary(getBookingSession(telegramId)) +
-      "\n\nНа эту дату нет слотов. Выберите дату:"
+      buildSummary(getBookingSession(telegramId)) + "\n\n" + NO_SLOTS_ON_DATE_MESSAGE
     await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
     return
   }
@@ -624,27 +627,25 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
 }
 
 function buildConfirmText(session: BookingSession): string {
-  const service = session.serviceName ?? "—"
+  const serviceNameOnly = stripTrailingDuration(session.serviceName ?? "—")
   const master = session.masterName ?? "—"
   const date = session.dateStr
     ? formatBookingDate(session.dateStr + "T12:00:00Z")
     : "—"
   const time = session.timeStr ?? "—"
 
-  const lines = ["Проверьте запись\n", `Услуга: ${service}`]
-  if (session.catalogTitle) lines.push(session.catalogTitle)
-  if (session.catalogElectroZone) lines.push(`Зона: ${session.catalogElectroZone}`)
+  const lines = ["Проверьте данные записи\n", `Услуга: ${serviceNameOnly}`]
+  const zone = session.catalogElectroZone ?? session.catalogTitle
+  if (zone) lines.push(`Зона: ${zone}`)
+  if (session.durationMin != null) lines.push(`Длительность: ${session.durationMin} мин`)
   lines.push("")
   lines.push(`Мастер: ${master}`)
   lines.push(`Дата: ${date}`)
   lines.push(`Время: ${time}`)
-  if (session.durationMin != null) lines.push(`Длительность: ${session.durationMin} мин`)
   if (session.price != null) lines.push(`Цена: ${session.price} ₽`)
   lines.push("")
-  lines.push("Запись будет создана со статусом ожидания подтверждения.")
-  lines.push("")
-  lines.push("После подтверждения изменить запись нельзя.")
-  lines.push("Если понадобится другой вариант, текущую запись нужно будет отменить и оформить заново.")
+  lines.push("Запись будет создана и ожидать подтверждения салоном.")
+  lines.push("После подтверждения изменить время или мастера нельзя — только отменить и оформить заново.")
   return lines.join("\n")
 }
 
@@ -652,11 +653,11 @@ function buildConfirmKeyboard(scheduledAtIso: string): InlineKeyboard {
   return new InlineKeyboard()
     .text("✅ Подтвердить запись", `confirm:${scheduledAtIso}`)
     .row()
-    .text("🕒 Изменить время", "edit_time")
-    .text("📅 Изменить дату", "edit_date")
+    .text("🕒 Другое время", "edit_time")
+    .text("📅 Другая дата", "edit_date")
     .row()
-    .text("👩 Изменить мастера", "edit_master")
-    .text("🔄 Выбрать другую услугу", "another_service")
+    .text("👩 Другой мастер", "edit_master")
+    .text("🔄 Другая услуга", "another_service")
     .row()
     .text("❌ Отмена", "cancel_flow")
 }
@@ -677,7 +678,7 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
   const confirmState = getConfirmState(session)
 
   if (confirmState.inProgress) {
-    await ctx.answerCallbackQuery({ text: "Подтверждение уже обрабатывается.", show_alert: false }).catch(() => {})
+    await ctx.answerCallbackQuery({ text: "Уже обрабатывается.", show_alert: false }).catch(() => {})
     return
   }
 
@@ -705,11 +706,11 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
         confirm: { ...EMPTY_CONFIRM_STATE },
       })
       await ctx.answerCallbackQuery({
-        text: "Это время уже стало недоступно.",
+        text: "К сожалению, это время только что занял другой клиент. Пожалуйста, выберите другое время.",
         show_alert: true,
       }).catch(() => {})
       await showTimeSelection(ctx, telegramId, serviceId, masterId, dateStr,
-        "Выбранное время уже недоступно. Пожалуйста, выберите другое время:")
+        "К сожалению, это время только что занял другой клиент. Пожалуйста, выберите другое время:")
       return
     }
 
@@ -726,21 +727,22 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
     return
   }
 
+  const serviceNameOnly = stripTrailingDuration(session.serviceName ?? "—")
   const summary = formatBookingSummary({
-    serviceDisplayName: session.serviceName ?? "—",
+    serviceDisplayName: serviceNameOnly,
     masterName: session.masterName ?? "—",
     scheduledAt: scheduledAtIso,
   })
   clearBookingSession(telegramId)
   console.log("[wizard] booking confirmed and created")
   await ctx.editMessageText(
-    "✅ Заявка на запись создана.\n\n" +
+    "Запись создана и ожидает подтверждения администратора.\n\n" +
       `Услуга: ${summary.service}\n` +
+      (session.durationMin != null ? `Длительность: ${session.durationMin} мин\n` : "") +
       `Мастер: ${summary.master}\n` +
       `Дата: ${summary.date}\n` +
       `Время: ${summary.time}\n\n` +
-      "Статус: ожидает подтверждения.\n\n" +
-      "Проверить записи: /my_bookings"
+      "Мои записи: /my_bookings"
   )
 }
 
@@ -864,7 +866,7 @@ export async function onCancelFlow(ctx: Context): Promise<void> {
   } catch {
     // Best-effort: state may already be IDLE (deep link flow never changes it).
   }
-  await ctx.editMessageText("Запись отменена. Вы можете начать заново:\n/book — запись\n/consult — консультация")
+  await ctx.editMessageText("Оформление отменено. Записаться: /book · Консультация: /consult")
 }
 
 /** User pressed Back: return to DATE selection (not time). */
@@ -951,7 +953,7 @@ export function isDateString(text: string): boolean {
   return DATE_REGEX.test(text)
 }
 
-const STALE_MSG = "Этот экран устарел. Открою актуальный шаг."
+const STALE_MSG = "Экран устарел. Обновляю."
 
 export function isStaleWizardCallback(telegramId: number, expected: WizardStep): boolean {
   const session = getBookingSession(telegramId)

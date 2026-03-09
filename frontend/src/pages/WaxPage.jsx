@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
 import { useCatalog } from "../hooks/useCatalog.js";
 import { CatalogPriceBlock } from "../components/CatalogPriceBlock.jsx";
+import { buildTelegramStartLink } from "../api/telegram.js";
 
 function FaqItem({ question, answer }) {
   const [open, setOpen] = useState(false);
@@ -100,7 +101,7 @@ export function WaxPage({ botUrl }) {
             для женщин и мужчин. Подходит для светлых волос. Работает без привязки к пигменту.
           </p>
           <div className="service-hero-actions">
-            <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+            <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
               Записаться в Telegram
             </a>
             <span className="service-price-badge">от 400 ₽ за зону</span>
@@ -356,7 +357,7 @@ export function WaxPage({ botUrl }) {
           </p>
           <CatalogPriceBlock data={catalogData} loading={catalogLoading} error={catalogError} />
           <div className="lp-price-cta">
-            <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+            <a href={buildTelegramStartLink("consult_zones")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
               Консультация и подбор зон
             </a>
           </div>
@@ -433,7 +434,7 @@ export function WaxPage({ botUrl }) {
             Профессиональный воск, аккуратная работа, честные цены. 
             Запись через Telegram — быстро и без звонков.
           </p>
-          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-cta">
+          <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-cta">
             Записаться в Telegram
           </a>
         </div>

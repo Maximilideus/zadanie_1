@@ -35,16 +35,8 @@ export async function resolveCatalogDeepLink(catalogItemId: string): Promise<Dee
 
 export function formatCatalogIntro(item: CatalogItemResponse): string {
   const category = CATEGORY_LABELS[item.category] ?? item.category
-  const title = item.titleRu
-  const price = item.price != null ? `${item.price} ₽` : "—"
-  const duration = item.durationMin != null ? `${item.durationMin} мин` : "—"
-
-  return [
-    "Вы выбрали услугу:",
-    "",
-    `${category}`,
-    `${title}`,
-    `Цена: ${price}`,
-    `Длительность: ${duration}`,
-  ].join("\n")
+  const lines = ["Вы выбрали:", "", category, `Зона: ${item.titleRu}`]
+  if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
+  if (item.price != null) lines.push(`Цена: ${item.price} ₽`)
+  return lines.join("\n")
 }

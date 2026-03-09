@@ -2,8 +2,9 @@ import "dotenv/config"
 import { Bot } from "grammy"
 import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, hasActiveBooking, cancelBookingById } from "./api/backend.client.js"
 import { InlineKeyboard } from "grammy"
-import { formatServiceDisplayName, formatBookingDate, formatBookingTime, formatMasterDisplayName } from "./services/formatters.js"
+import { formatServiceDisplayName, formatServiceNameOnly, formatBookingDate, formatBookingTime, formatMasterDisplayName } from "./services/formatters.js"
 import { stateRouter } from "./router/state.router.js"
+import { startConsultationFromDeepLink, getConsultCategoryLabel } from "./handlers/consulting.handler.js"
 import { parseCatalogPayload, resolveCatalogDeepLink, formatCatalogIntro } from "./services/deeplink.js"
 import {
   onServiceChosen,
@@ -41,9 +42,8 @@ import {
 const UNAVAILABLE = "Сервис временно недоступен. Попробуйте позже."
 
 const ACTIVE_BOOKING_BLOCKED =
-  "У вас уже есть активная запись.\n" +
-  "Сначала отмените текущую запись или дождитесь её завершения.\n\n" +
-  "Посмотреть и отменить запись можно в разделе «Мои записи»."
+  "У вас уже есть активная запись.\n\n" +
+  "Сначала отмените текущую запись в разделе «Мои записи» или дождитесь её завершения."
 
 function activeBookingBlockedKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
@@ -92,8 +92,37 @@ bot.command("start", async (ctx) => {
   try {
     await telegramAuth(telegramId, name)
 
-    const payload = ctx.match ? String(ctx.match) : undefined
+    const payload = ctx.match ? String(ctx.match).trim() : undefined
     const catalogItemId = parseCatalogPayload(payload)
+
+    if (payload === "booking") {
+      if (await hasActiveBooking(telegramId)) {
+        await ctx.reply(ACTIVE_BOOKING_BLOCKED, { reply_markup: activeBookingBlockedKeyboard() })
+        return
+      }
+      await showCategorySelection(ctx)
+      return
+    }
+
+    if (payload === "consult_zones") {
+      try {
+        await updateTelegramState(telegramId, "CONSULTING")
+      } catch {
+        // best-effort
+      }
+      await startConsultationFromDeepLink(ctx, "zones")
+      return
+    }
+
+    if (payload === "consult_time") {
+      try {
+        await updateTelegramState(telegramId, "CONSULTING")
+      } catch {
+        // best-effort
+      }
+      await startConsultationFromDeepLink(ctx, "time")
+      return
+    }
 
     if (catalogItemId) {
       const result = await resolveCatalogDeepLink(catalogItemId)
@@ -101,14 +130,13 @@ bot.command("start", async (ctx) => {
       if (!result.ok) {
         if (result.reason === "not_bookable") {
           await ctx.reply(
-            "Для этой позиции прямая запись недоступна. " +
-            "Пожалуйста, воспользуйтесь консультацией или выберите другую услугу.\n\n" +
+            "Для этой услуги запись через бота недоступна. " +
+            "Напишите нам в консультации или выберите другую услугу.\n\n" +
             "/consult — консультация\n/book — запись"
           )
         } else {
           await ctx.reply(
-            "Не удалось открыть запись по выбранной услуге. " +
-            "Пожалуйста, начните заново через /consult или /book."
+            "Услуга не найдена или изменилась. Начните с /book или /consult."
           )
         }
         return
@@ -145,7 +173,7 @@ bot.command("start", async (ctx) => {
     }
 
     await ctx.reply(
-      `Добро пожаловать${name ? `, ${name}` : ""}! Чем могу помочь?`,
+      `Здравствуйте${name ? `, ${name}` : ""}! Я помогу записаться на процедуру или отвечу на вопросы.`,
       { reply_markup: buildMainMenuKeyboard() },
     )
   } catch {
@@ -181,6 +209,19 @@ bot.callbackQuery("main_consult", async (ctx) => {
   }
 })
 
+bot.callbackQuery(/^consult_dl:(.+)$/, async (ctx) => {
+  try {
+    const slug = ctx.match[1]
+    const label = getConsultCategoryLabel(slug)
+    await ctx.editMessageText(
+      `Вы выбрали: ${label}.\n\nНапишите ваш вопрос или пожелания — ответим в чате.`,
+    )
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch {
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
 bot.callbackQuery("main_bookings", async (ctx) => {
   try {
     const telegramId = String(ctx.from.id)
@@ -205,7 +246,7 @@ bot.callbackQuery("main_back", async (ctx) => {
   try {
     const name = ctx.from.first_name ?? undefined
     await ctx.editMessageText(
-      `Добро пожаловать${name ? `, ${name}` : ""}! Чем могу помочь?`,
+      `Здравствуйте${name ? `, ${name}` : ""}! Я помогу записаться на процедуру или отвечу на вопросы.`,
       { reply_markup: buildMainMenuKeyboard() },
     )
     await ctx.answerCallbackQuery().catch(() => {})
@@ -216,14 +257,12 @@ bot.callbackQuery("main_back", async (ctx) => {
 
 bot.command("help", async (ctx) => {
   await ctx.reply(
-    "Доступные команды:\n\n" +
-      "/start — инициализация сессии\n" +
-      "/help — показать это сообщение\n" +
-      "/status — показать текущий статус\n" +
-      "/consult — начать консультацию\n" +
-      "/book — перейти к записи\n" +
-      "/cancel — отменить действие и вернуться в начало\n" +
-      "/my_bookings — мои записи"
+    "Команды:\n\n" +
+      "/start — главное меню\n" +
+      "/book — записаться на приём\n" +
+      "/consult — консультация\n" +
+      "/my_bookings — мои записи\n" +
+      "/cancel — отменить текущее действие"
   )
 })
 
@@ -235,7 +274,8 @@ bot.command("status", async (ctx) => {
 
   try {
     const { state } = await getUserByTelegramId(telegramId)
-    await ctx.reply(`Ваш текущий статус: ${state}`)
+    const stateText = state === "IDLE" ? "свободен" : state === "CONSULTING" ? "консультация" : state === "BOOKING_FLOW" ? "оформление записи" : state === "BOOKED" ? "записан" : state
+    await ctx.reply(`Статус: ${stateText}`)
   } catch {
     await ctx.reply(UNAVAILABLE)
   }
@@ -251,7 +291,7 @@ bot.command("consult", async (ctx) => {
     const { state } = await telegramAuth(telegramId)
 
     if (state !== "IDLE") {
-      await ctx.reply("Сейчас нельзя начать консультацию.")
+      await ctx.reply("Сначала завершите текущее действие или нажмите /cancel.")
       return
     }
 
@@ -281,7 +321,7 @@ bot.command("book", async (ctx) => {
       } catch (e) {
         const err = e as Error & { statusCode?: number }
         if (err.statusCode === 409) {
-          await ctx.reply("Сейчас нельзя перейти к записи. Используйте /cancel и попробуйте снова.")
+          await ctx.reply("Сначала завершите текущее действие: /cancel")
           return
         }
         throw e
@@ -294,37 +334,37 @@ bot.command("book", async (ctx) => {
 })
 
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: "⏳ ожидает подтверждения",
-  CONFIRMED: "✅ подтверждена",
+  PENDING: "ожидает подтверждения",
+  CONFIRMED: "подтверждена",
 }
 
 const EMPTY_BOOKINGS_TEXT =
-  "📭 У вас пока нет ближайших записей.\n\n" +
-  "Когда будете готовы — нажмите /book"
+  "У вас пока нет записей.\n\nЧтобы записаться — нажмите «Записаться» или /book"
 
 function buildBookingListMessage(bookings: Awaited<ReturnType<typeof getUpcomingBookings>>) {
-  const lines = ["📋 Ваши ближайшие записи"]
+  const lines = ["📋 Ваши записи"]
 
   bookings.forEach((b, i) => {
-    const serviceDisplay = formatServiceDisplayName(b.service)
+    const serviceName = formatServiceNameOnly(b.service)
     const masterDisplay = formatMasterDisplayName(b.masterName)
-    const duration = b.service.durationMin ? ` — ${b.service.durationMin} мин` : ""
+    const durationMin = b.service.durationMin
     const status = STATUS_LABELS[b.status] ?? b.status
 
     lines.push("")
     lines.push(`━━━━━━━━━━━━━━━━━━━━`)
     lines.push(`📅 Запись #${i + 1}`)
     lines.push("")
-    lines.push(`    Услуга: ${serviceDisplay}${duration}`)
-    lines.push(`    Мастер: ${masterDisplay}`)
-    lines.push(`    Дата: ${formatBookingDate(b.scheduledAt)}`)
-    lines.push(`    Время: ${formatBookingTime(b.scheduledAt)}`)
-    lines.push(`    Статус: ${status}`)
+    lines.push(`Услуга: ${serviceName}`)
+    if (durationMin != null) lines.push(`Длительность: ${durationMin} мин`)
+    lines.push(`Мастер: ${masterDisplay}`)
+    lines.push(`Дата: ${formatBookingDate(b.scheduledAt)}`)
+    lines.push(`Время: ${formatBookingTime(b.scheduledAt)}`)
+    lines.push(`Статус: ${status}`)
   })
 
   const keyboard = new InlineKeyboard()
   bookings.forEach((b, i) => {
-    keyboard.text(`❌ Отменить запись ${i + 1}`, `cancel_bk:${b.id}`).row()
+    keyboard.text(`❌ Отменить #${i + 1}`, `cancel_bk:${b.id}`).row()
   })
   return { text: lines.join("\n"), keyboard }
 }
@@ -360,11 +400,11 @@ bot.command("cancel", async (ctx) => {
   try {
     await updateTelegramState(telegramId, "IDLE")
     await stateRouter(ctx, "IDLE")
-    await ctx.reply("Действие отменено. Вы возвращены в начальное состояние.")
+    await ctx.reply("Действие отменено. Выберите новое действие в меню.")
   } catch (e) {
     const err = e as Error & { statusCode?: number }
     if (err.statusCode === 409) {
-      await ctx.reply("Переход в начальное состояние сейчас недоступен. Попробуйте позже.")
+      await ctx.reply("Не удалось сбросить состояние. Попробуйте позже.")
       return
     }
     await ctx.reply(UNAVAILABLE)
@@ -650,14 +690,14 @@ bot.callbackQuery(/^cancel_bk:(.+)$/, async (ctx) => {
     const serviceDisplay = formatServiceDisplayName(booking.service)
     const masterDisplay = formatMasterDisplayName(booking.masterName)
     const text =
-      "Вы действительно хотите отменить запись?\n\n" +
+      "Отменить эту запись?\n\n" +
       `Услуга: ${serviceDisplay}\n` +
       `Мастер: ${masterDisplay}\n` +
       `Дата: ${formatBookingDate(booking.scheduledAt)}\n` +
       `Время: ${formatBookingTime(booking.scheduledAt)}`
     const keyboard = new InlineKeyboard()
       .text("Да, отменить", `cancel_bk_yes:${bookingId}`)
-      .text("Назад", "cancel_bk_no")
+      .text("Нет, назад", "cancel_bk_no")
     await ctx.editMessageText(text, { reply_markup: keyboard })
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
@@ -676,8 +716,8 @@ bot.callbackQuery(/^cancel_bk_yes:(.+)$/, async (ctx) => {
       const msg = e instanceof Error ? e.message : ""
       if (msg.includes("CANCELLATION_TOO_LATE")) {
         await ctx.editMessageText(
-          "Отменить запись можно не позднее чем за 4 часа до начала.\n\n" +
-          "Используйте /my_bookings для просмотра записей."
+          "Отменить запись можно не позднее чем за 4 часа до визита.\n\n" +
+          "Мои записи: /my_bookings"
         )
         await ctx.answerCallbackQuery().catch(() => {})
         return
@@ -685,7 +725,7 @@ bot.callbackQuery(/^cancel_bk_yes:(.+)$/, async (ctx) => {
       if (msg.includes("BOOKING_NOT_CANCELLABLE") || msg.includes("INVALID_BOOKING_TRANSITION")) {
         await ctx.editMessageText(
           "Эту запись нельзя отменить.\n\n" +
-          "Используйте /my_bookings для просмотра записей."
+          "Мои записи: /my_bookings"
         )
         await ctx.answerCallbackQuery().catch(() => {})
         return
@@ -693,12 +733,12 @@ bot.callbackQuery(/^cancel_bk_yes:(.+)$/, async (ctx) => {
       throw e
     }
     await ctx.editMessageText(
-      "✅ Запись отменена.\n\nИспользуйте /my_bookings для просмотра записей."
+      "✅ Запись отменена.\n\nМои записи: /my_bookings"
     )
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
     console.error("[my_bookings] cancel_bk_yes callback error", e)
-    await ctx.editMessageText("Не удалось отменить запись. Попробуйте позже.").catch(() => {})
+    await ctx.editMessageText("Не удалось отменить запись. Попробуйте позже или напишите нам.").catch(() => {})
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
   }
 })

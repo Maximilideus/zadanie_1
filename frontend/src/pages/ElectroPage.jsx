@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
 import { useCatalog } from "../hooks/useCatalog.js";
-import { buildTelegramLink } from "../api/telegram.js";
+import { buildTelegramLink, buildTelegramStartLink } from "../api/telegram.js";
+import { getCatalogItemPriceAndDuration } from "../utils/catalogDisplay.js";
 
 function FaqItem({ question, answer }) {
   const [open, setOpen] = useState(false);
@@ -130,7 +131,7 @@ export function ElectroPage({ botUrl }) {
             Apilus xCell Pro — минимальный дискомфорт, максимальный результат.
           </p>
           <div className="service-hero-actions">
-            <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+            <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
               Записаться в Telegram
             </a>
             <span className="service-price-badge">от 900 ₽ / 15 мин</span>
@@ -317,25 +318,23 @@ export function ElectroPage({ botUrl }) {
               <h3 className="lp-catalog-group-title">{title}</h3>
               <div className="lp-zone-table">
                 <div className="lp-zone-table-header">
-                  <span>Зона</span>
+                  <span>ЗОНА / ПРОЦЕДУРА</span>
                   <span>Время / сеанс</span>
                   <span>Кол-во сеансов / примечание</span>
                 </div>
                 {items.map((item) => {
-                  const isInfo = item.type === "INFO";
+                  const { price, durationMin } = getCatalogItemPriceAndDuration(item);
+                  const isPostLaserRow = item.title === "Финальная доработка после лазера";
+                  const zoneDisplayTitle = isPostLaserRow ? "Доработка волос после лазерной депиляции" : item.title;
+                  let timeLabel = item.subtitle ?? (durationMin != null ? `${durationMin} мин` : "—");
+                  if (isPostLaserRow && timeLabel === "—") timeLabel = "определяется на ОЧНОЙ консультации";
+                  let sessionsLabel = (item.sessionsNoteRu && item.sessionsNoteRu.trim()) ? item.sessionsNoteRu : "—";
+                  if (isPostLaserRow && sessionsLabel === "—") sessionsLabel = "индивидуально";
                   return (
                     <div className="lp-zone-table-row" key={item.id}>
-                      <span className="lp-zone-table-zone">{item.title}</span>
-                      <span className="lp-zone-table-time">
-                        {isInfo
-                          ? (item.subtitle ?? "—")
-                          : (item.subtitle ?? (item.durationMin != null ? `${item.durationMin} мин` : "—"))}
-                      </span>
-                      <span className="lp-zone-table-sessions">
-                        {isInfo
-                          ? (item.description ?? "—")
-                          : (item.description ?? (item.price != null ? `${item.price} ₽` : "—"))}
-                      </span>
+                      <span className="lp-zone-table-zone">{zoneDisplayTitle}</span>
+                      <span className="lp-zone-table-time">{timeLabel}</span>
+                      <span className="lp-zone-table-sessions">{sessionsLabel}</span>
                     </div>
                   );
                 })}
@@ -368,18 +367,23 @@ export function ElectroPage({ botUrl }) {
             const timeItems = getTimePackageItems(catalogData?.sections);
             return timeItems.length > 0 ? (
               <div className="lp-electro-price-grid">
-                {timeItems.map((item) => (
-                  <a
-                    key={item.id}
-                    href={buildTelegramLink(item.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="lp-electro-price-card lp-electro-price-card--bookable"
-                  >
-                    <span className="lp-electro-price-time">{item.subtitle ?? (item.durationMin != null ? `${item.durationMin} мин` : item.title)}</span>
-                    <span className="lp-electro-price-val">{item.price != null ? `${item.price} ₽` : "—"}</span>
-                  </a>
-                ))}
+                {timeItems.map((item) => {
+                  const { price, durationMin } = getCatalogItemPriceAndDuration(item);
+                  const timeLabel = item.subtitle ?? (durationMin != null ? `${durationMin} мин` : item.title);
+                  const priceLabel = price != null ? `${price} ₽` : "—";
+                  return (
+                    <a
+                      key={item.id}
+                      href={buildTelegramLink(item.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="lp-electro-price-card lp-electro-price-card--bookable"
+                    >
+                      <span className="lp-electro-price-time">{timeLabel}</span>
+                      <span className="lp-electro-price-val">{priceLabel}</span>
+                    </a>
+                  );
+                })}
               </div>
             ) : null;
           })()}
@@ -387,7 +391,7 @@ export function ElectroPage({ botUrl }) {
             Первая консультация — бесплатно. Анестезирующий крем — 200 ₽ (при необходимости).
           </div>
           <div className="lp-price-cta">
-            <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+            <a href={buildTelegramStartLink("consult_time")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
               Консультация и подбор времени
             </a>
           </div>
@@ -466,7 +470,7 @@ export function ElectroPage({ botUrl }) {
             Расскажем, подходит ли вам этот метод, и составим реалистичный план. 
             Консультация бесплатно — без обязательств.
           </p>
-          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="service-btn-cta">
+          <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-cta">
             Записаться в Telegram
           </a>
         </div>

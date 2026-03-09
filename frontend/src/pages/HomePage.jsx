@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useScrollAnimation } from "../components/useScrollAnimation.js";
 import { getPublicMasters } from "../api/public.js";
+import { buildTelegramStartLink, buildTelegramLink } from "../api/telegram.js";
+import { useCatalog } from "../hooks/useCatalog.js";
 
 // ═══════════════════════════════════════════════════════════════
 // HERO
@@ -254,42 +256,39 @@ function GenderSection() {
   );
 }
 
+// Flatten grouped catalog sections to all items (for massage matching).
+function getAllCatalogItems(sections) {
+  if (!sections || typeof sections !== "object") return [];
+  const items = [];
+  for (const genderSections of Object.values(sections)) {
+    if (!genderSections || typeof genderSections !== "object") continue;
+    for (const group of Object.values(genderSections)) {
+      if (group?.items?.length) items.push(...group.items);
+    }
+  }
+  return items;
+}
+
+// Find catalog item whose title contains or equals the given type title (e.g. "Классический").
+function findMassageCatalogItemByTitle(items, typeTitle) {
+  if (!items?.length || !typeTitle) return null;
+  const lower = typeTitle.toLowerCase();
+  return items.find((item) => item.title === typeTitle || item.title.toLowerCase().includes(lower)) ?? null;
+}
+
 // ═══════════════════════════════════════════════════════════════
 // МАССАЖ
 // ═══════════════════════════════════════════════════════════════
 
-function MassageSection({ botUrl }) {
+function MassageSection({ bookingLinkFallback, catalogData }) {
   const [ref, isVisible] = useScrollAnimation({ threshold: 0.1 });
+  const items = getAllCatalogItems(catalogData?.sections);
 
   const types = [
-    {
-      icon: "🤲",
-      title: "Классический",
-      desc: "Проработка мышц, улучшение кровообращения, повышение тонуса тела.",
-      effect: "Снятие напряжения",
-      for: "Для всех",
-    },
-    {
-      icon: "🌿",
-      title: "Расслабляющий",
-      desc: "Ароматерапия, плавные движения, снижение стресса и улучшение сна.",
-      effect: "Восстановление",
-      for: "После нагрузок",
-    },
-    {
-      icon: "⚡",
-      title: "Спортивный",
-      desc: "Интенсивная проработка мышц, ускорение восстановления после тренировок.",
-      effect: "Восстановление",
-      for: "Для спортсменов",
-    },
-    {
-      icon: "💧",
-      title: "Лимфодренажный",
-      desc: "Стимуляция лимфотока, уменьшение отёков, коррекция контура тела.",
-      effect: "Детокс",
-      for: "При отёках",
-    },
+    { icon: "🤲", title: "Классический", desc: "Проработка мышц, улучшение кровообращения, повышение тонуса тела.", effect: "Снятие напряжения", for: "Для всех" },
+    { icon: "🌿", title: "Расслабляющий", desc: "Ароматерапия, плавные движения, снижение стресса и улучшение сна.", effect: "Восстановление", for: "После нагрузок" },
+    { icon: "⚡", title: "Спортивный", desc: "Интенсивная проработка мышц, ускорение восстановления после тренировок.", effect: "Восстановление", for: "Для спортсменов" },
+    { icon: "💧", title: "Лимфодренажный", desc: "Стимуляция лимфотока, уменьшение отёков, коррекция контура тела.", effect: "Детокс", for: "При отёках" },
   ];
 
   return (
@@ -301,20 +300,24 @@ function MassageSection({ botUrl }) {
           Четыре вида массажа — для расслабления, спорта, лимфодренажа и общего тонуса.
         </p>
         <div className="land-massage-grid">
-          {types.map((m, i) => (
-            <div key={i} className="land-massage-card">
-              <span className="land-massage-icon">{m.icon}</span>
-              <h3 className="land-massage-title">{m.title}</h3>
-              <p className="land-massage-desc">{m.desc}</p>
-              <div className="land-massage-meta">
-                <span className="land-massage-tag">{m.effect}</span>
-                <span className="land-massage-tag">{m.for}</span>
+          {types.map((m, i) => {
+            const catalogItem = findMassageCatalogItemByTitle(items, m.title);
+            const href = catalogItem ? buildTelegramLink(catalogItem.id) : bookingLinkFallback;
+            return (
+              <div key={i} className="land-massage-card">
+                <span className="land-massage-icon">{m.icon}</span>
+                <h3 className="land-massage-title">{m.title}</h3>
+                <p className="land-massage-desc">{m.desc}</p>
+                <div className="land-massage-meta">
+                  <span className="land-massage-tag">{m.effect}</span>
+                  <span className="land-massage-tag">{m.for}</span>
+                </div>
+                <a href={href} target="_blank" rel="noopener noreferrer" className="land-massage-btn">
+                  Записаться в Telegram
+                </a>
               </div>
-              <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-massage-btn">
-                Записаться в Telegram
-              </a>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -773,18 +776,20 @@ function ContactsSection() {
 // ═══════════════════════════════════════════════════════════════
 
 export function HomePage({ botUrl }) {
+  const bookingLink = buildTelegramStartLink("booking");
+  const { data: massageCatalog } = useCatalog("massage");
   return (
     <div className="land-root">
-      <HeroSection botUrl={botUrl} />
+      <HeroSection botUrl={bookingLink} />
       <WhyUsSection />
       <ServicesSection />
       <GenderSection />
-      <MassageSection botUrl={botUrl} />
+      <MassageSection bookingLinkFallback={bookingLink} catalogData={massageCatalog} />
       <MastersSection />
       <TrustSection />
       <ReviewsSection />
-      <FaqSection botUrl={botUrl} />
-      <CtaSection botUrl={botUrl} />
+      <FaqSection botUrl={bookingLink} />
+      <CtaSection botUrl={bookingLink} />
       <ContactsSection />
     </div>
   );

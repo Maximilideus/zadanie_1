@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { buildTelegramLink } from "../api/telegram.js";
+import { getCatalogItemPriceAndDuration } from "../utils/catalogDisplay.js";
 
 const GENDER_LABELS = {
   female: "Женщины",
@@ -75,6 +76,9 @@ export function CatalogPriceBlock({ data, loading, error }) {
                 <span>Цена</span>
               </div>
               {group.items.map((item) => {
+                const { price, durationMin } = getCatalogItemPriceAndDuration(item);
+                const timeLabel = item.subtitle ?? (durationMin != null ? `${durationMin} мин` : "—");
+                const priceLabel = price != null ? `${price} ₽` : "—";
                 const rowContent = (
                   <>
                     <span className="lp-price-zone">
@@ -83,10 +87,8 @@ export function CatalogPriceBlock({ data, loading, error }) {
                         <span className="lp-price-desc">{item.description}</span>
                       )}
                     </span>
-                    <span className="lp-price-time">{item.subtitle ?? (item.durationMin != null ? `${item.durationMin} мин` : "—")}</span>
-                    <span className="lp-price-val">
-                      {item.price != null ? `${item.price} ₽` : "—"}
-                    </span>
+                    <span className="lp-price-time">{timeLabel}</span>
+                    <span className="lp-price-val">{priceLabel}</span>
                   </>
                 );
 
