@@ -5,8 +5,6 @@ import { BookingStatusMachine } from "../stateMachines/BookingStatusMachine"
 const SCHEMA_SYNC_MESSAGE =
   "Database schema is not synchronized. Please run prisma migrate."
 
-const PENDING_TTL_HOURS = 12
-
 const bookingSelect = {
   id: true,
   userId: true,
@@ -34,23 +32,18 @@ export class BookingService {
   private readonly statusMachine = new BookingStatusMachine()
 
   async createBooking(userId: string) {
-    const now = new Date()
     const active = await prisma.booking.findFirst({
       where: {
         userId,
-        OR: [
-          { status: "CONFIRMED" },
-          { status: "PENDING", expiresAt: { gt: now } },
-        ],
+        status: { in: ["PENDING", "CONFIRMED"] },
       },
     })
     if (active) {
       throw new Error("ACTIVE_BOOKING_EXISTS")
     }
-    const expiresAt = new Date(now.getTime() + PENDING_TTL_HOURS * 60 * 60 * 1000)
     try {
       return await prisma.booking.create({
-        data: { userId, status: "PENDING", expiresAt },
+        data: { userId, status: "PENDING" },
         select: bookingSelect,
       })
     } catch (e) {
@@ -85,12 +78,10 @@ export class BookingService {
       select: { id: true },
     })
     if (!user) throw new Error("NOT_FOUND")
-    const now = new Date()
     const booking = await prisma.booking.findFirst({
       where: {
         userId: user.id,
         status: "PENDING",
-        expiresAt: { gt: now },
       },
       select: { id: true },
     })

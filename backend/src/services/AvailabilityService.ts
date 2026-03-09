@@ -155,15 +155,11 @@ export async function getAvailableSlots(
     workingIntervals = workingIntervals.flatMap((w) => subtractInterval(w, appInterval))
   }
 
-  const nowUtc = new Date()
   const bookings = await prisma.booking.findMany({
     where: {
       masterId,
       scheduledAt: { not: null, gte: dayStartUtc, lte: dayEndUtc },
-      OR: [
-        { status: "CONFIRMED" },
-        { status: "PENDING", expiresAt: { not: null, gt: nowUtc } },
-      ],
+      status: { in: ["PENDING", "CONFIRMED"] },
     },
     select: { scheduledAt: true },
   })

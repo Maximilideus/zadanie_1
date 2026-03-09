@@ -20,7 +20,6 @@ import requestIdPlugin from "./plugins/requestId"
 import rateLimitPlugin from "./plugins/rateLimit"
 import jwtPlugin from "./plugins/jwt"
 import { authenticate } from "./middlewares/auth.middleware"
-import { startExpirePendingBookingsJob } from "./jobs/expirePendingBookings"
 import { startBookingRemindersJob, runBookingRemindersOnce } from "./jobs/sendBookingReminders"
 import cors from "@fastify/cors"
 
@@ -295,13 +294,11 @@ app.setErrorHandler((error, request, reply) => {
   })
 })
 
-let expireBookingsInterval: NodeJS.Timeout | null = null
 let remindersInterval: NodeJS.Timeout | null = null
 
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {
   app.log.info({ signal }, "Shutting down gracefully...")
-  if (expireBookingsInterval) clearInterval(expireBookingsInterval)
   if (remindersInterval) clearInterval(remindersInterval)
 
   try {
@@ -332,7 +329,6 @@ const start = async () => {
     await app.listen({ port: env.PORT })
     app.log.info(`Server running on http://localhost:${env.PORT}`)
 
-    expireBookingsInterval = startExpirePendingBookingsJob(app.log)
     remindersInterval = startBookingRemindersJob(app.log)
   } catch (err) {
     app.log.error({ err }, "Failed to start server")
