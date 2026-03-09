@@ -38,7 +38,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.6",
     "@types/luxon": "^3.7.1",
-    "@types/node": "^25.3.5",
+    "@types/node": "^25.4.0",
     "@types/pg": "^8.16.0",
     "prisma": "^5.22.0",
     "ts-node-dev": "^2.0.0",

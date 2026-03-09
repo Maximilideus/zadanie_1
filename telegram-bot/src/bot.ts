@@ -22,6 +22,10 @@ import {
   onEditMaster,
   onChooseAnotherService,
   onCancelFlow,
+  onNearestSlotChosen,
+  onChooseDate,
+  onNearestBack,
+  onTimeFilterChosen,
   getBookingSession,
   clearBookingSession,
   startWizardWithService,
@@ -585,6 +589,45 @@ bot.callbackQuery(/^mst:(.+)$/, async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
     console.error("[wizard] mst callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^nearest:(.+)$/, async (ctx) => {
+  try {
+    await onNearestSlotChosen(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] nearest callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("choose_date", async (ctx) => {
+  try {
+    await onChooseDate(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] choose_date callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery("nearest_back", async (ctx) => {
+  try {
+    await onNearestBack(ctx)
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] nearest_back callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
+bot.callbackQuery(/^tf:(.+):(.+)$/, async (ctx) => {
+  try {
+    await onTimeFilterChosen(ctx, ctx.match[1], ctx.match[2])
+  } catch (e) {
+    console.error("[wizard] tf callback error", e)
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
   }
 })

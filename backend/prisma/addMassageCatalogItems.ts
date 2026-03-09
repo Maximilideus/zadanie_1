@@ -3,6 +3,7 @@
  *
  * Usage:  npx tsx prisma/addMassageCatalogItems.ts
  */
+/// <reference types="node" />
 import { PrismaClient, CatalogCategory, CatalogItemType, CatalogGender } from "@prisma/client"
 
 const prisma = new PrismaClient()
@@ -81,6 +82,7 @@ async function main() {
 main()
   .catch((e) => {
     console.error(e)
-    process.exit(1)
+    process.exitCode = 1
   })
   .finally(() => prisma.$disconnect())
+

@@ -44,6 +44,102 @@ const NO_SLOTS_ON_DATE_MESSAGE =
   "Выберите другую дату из доступных ниже.\n" +
   "Если ни одна дата не подходит, можно вернуться назад и выбрать другого мастера."
 
+const NO_SLOTS_IN_PERIOD_MESSAGE =
+  "На выбранную часть дня свободного времени нет. Попробуйте выбрать другой период."
+
+const NO_MORNING_SLOTS_MESSAGE =
+  "На утро свободного времени нет. Попробуйте «День» или «Вечер»."
+
+/** Time-of-day filter: applied in bot UI only after full slot list is fetched. */
+export type TimeFilter = "morning" | "day" | "evening"
+
+/** Hour (0–23) of a slot in salon timezone. */
+function getSlotHourInSalon(iso: string): number {
+  const d = new Date(iso)
+  const parts = d.toLocaleTimeString("en-GB", { timeZone: SALON_TIMEZONE, hour12: false }).split(":")
+  return parseInt(parts[0] ?? "0", 10) || 0
+}
+
+/** Filter slots by time of day in salon TZ. Morning < 12, day 12–16:59, evening ≥ 17. */
+export function filterSlotsByTimeOfDay(slots: string[], filter: TimeFilter): string[] {
+  return slots.filter((iso) => {
+    const h = getSlotHourInSalon(iso)
+    if (filter === "morning") return h < 12
+    if (filter === "day") return h >= 12 && h < 17
+    if (filter === "evening") return h >= 17
+    return true
+  })
+}
+
+/**
+ * Show time slot grid with time-of-day filter row. Uses full slots list; filtering is UI-only.
+ * Defaults to morning; only 3 filters: Утро, День, Вечер.
+ */
+async function showTimeSlotScreen(
+  ctx: Context,
+  telegramId: number,
+  serviceId: string,
+  masterId: string,
+  dateStr: string,
+  slots: string[],
+  headerMessage: string,
+  filter: TimeFilter = "morning",
+): Promise<void> {
+  setBookingSession(telegramId, { step: "time" })
+  const filtered = filterSlotsByTimeOfDay(slots, filter)
+  const keyboard = new InlineKeyboard()
+    .text("🌅 Утро", `tf:morning:${dateStr}`)
+    .text("☀️ День", `tf:day:${dateStr}`)
+    .text("🌙 Вечер", `tf:evening:${dateStr}`)
+    .row()
+  if (filtered.length === 0) {
+    const session = getBookingSession(telegramId)
+    const emptyMessage =
+      filter === "morning" ? NO_MORNING_SLOTS_MESSAGE : NO_SLOTS_IN_PERIOD_MESSAGE
+    const text = buildSummary(session) + "\n\n" + headerMessage + "\n\n" + emptyMessage
+    await editWizardMessage(ctx, session, text, keyboard)
+    return
+  }
+  const toShow = filtered.slice(0, MAX_SLOT_BUTTONS)
+  for (let i = 0; i < toShow.length; i++) {
+    keyboard.text(slotLabel(toShow[i]), `t:${toShow[i]}`)
+    if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
+  }
+  const session = getBookingSession(telegramId)
+  const text = buildSummary(session) + "\n\n" + headerMessage
+  await editWizardMessage(ctx, session, text, keyboard)
+}
+
+/** Handle time-of-day filter click: re-fetch slots and show filtered grid (UI-only filter). */
+export async function onTimeFilterChosen(
+  ctx: Context,
+  filter: string,
+  dateStr: string,
+): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  const session = getBookingSession(telegramId)
+  const { serviceId, masterId } = session
+  if (!serviceId || !masterId) {
+    await ctx.answerCallbackQuery({ text: "Сначала выберите услугу и мастера." }).catch(() => {})
+    return
+  }
+  const validFilter: TimeFilter =
+    filter === "morning" || filter === "day" || filter === "evening" ? filter : "morning"
+  const { slots } = await getAvailability(serviceId, masterId, dateStr)
+  await showTimeSlotScreen(
+    ctx,
+    telegramId,
+    serviceId,
+    masterId,
+    dateStr,
+    slots,
+    "Выберите время:",
+    validFilter,
+  )
+  await ctx.answerCallbackQuery().catch(() => {})
+}
+
 function todayStrInSalonTz(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: SALON_TIMEZONE })
 }
@@ -215,6 +311,131 @@ async function getNext14DaysForMaster(masterId: string): Promise<{ date: string;
     }
   }
   return candidates
+}
+
+/**
+ * Earliest available slot across the master's next available days. Uses existing getAvailability
+ * per date; no backend changes. Returns ISO string or null if no slots.
+ */
+async function getNearestAvailableSlot(serviceId: string, masterId: string): Promise<string | null> {
+  const days = await getNext14DaysForMaster(masterId)
+  const allSlots: string[] = []
+  for (const day of days) {
+    try {
+      const { slots } = await getAvailability(serviceId, masterId, day.date)
+      allSlots.push(...slots)
+    } catch {
+      continue
+    }
+  }
+  if (allSlots.length === 0) return null
+  allSlots.sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+  return allSlots[0] ?? null
+}
+
+/** Show "nearest slot" choice screen: book it, or choose date/time, or back to masters. */
+async function showNearestSlotScreen(
+  ctx: Context,
+  telegramId: number,
+  masterName: string,
+  scheduledAtIso: string,
+): Promise<void> {
+  const session = getBookingSession(telegramId)
+  const dateLabel = formatBookingDate(scheduledAtIso)
+  const timeLabel = formatBookingTime(scheduledAtIso)
+  const text =
+    buildSummary(session) +
+    "\n\n" +
+    `Для мастера ${masterName} нашли ближайшее свободное время:\n\n` +
+    `📅 ${dateLabel}\n` +
+    `⏰ ${timeLabel}\n\n` +
+    "Если вам подходит — можно записаться сразу.\nЕсли нет — выберите дату и время вручную."
+  const keyboard = new InlineKeyboard()
+    .text("⚡ Записаться на ближайшее", `nearest:${scheduledAtIso}`)
+    .row()
+    .text("📅 Выбрать дату и время", "choose_date")
+    .row()
+    .text("⬅️ Назад", "nearest_back")
+  await editWizardMessage(ctx, session, text, keyboard)
+}
+
+/** Show date selection (after master). Used from "Выбрать дату и время" and when no nearest slot. */
+export async function showDateSelection(ctx: Context, telegramId: number): Promise<void> {
+  const session = getBookingSession(telegramId)
+  const masterId = session.masterId
+  if (!masterId) return
+  setBookingSession(telegramId, { step: "date" })
+  const days = await getNext14DaysForMaster(masterId)
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < days.length; i++) {
+    keyboard.text(days[i].label, `day:${days[i].date}`)
+    if ((i + 1) % DAYS_BUTTONS_PER_ROW === 0) keyboard.row()
+  }
+  keyboard.row().text("📅 Ввести дату", "manual_date")
+  const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите дату:"
+  await editWizardMessage(ctx, session, text, keyboard)
+}
+
+/** User chose "Записаться на ближайшее": set slot and show confirm screen. */
+export async function onNearestSlotChosen(ctx: Context, scheduledAtIso: string): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  const session = getBookingSession(telegramId)
+  if (!session.serviceId || !session.masterId) {
+    await ctx.answerCallbackQuery({ text: "Сначала выберите услугу и мастера." }).catch(() => {})
+    return
+  }
+  const d = new Date(scheduledAtIso)
+  const dateStr = dateStrInSalonTz(d)
+  const timeStr = formatBookingTime(scheduledAtIso)
+  setBookingSession(telegramId, {
+    dateStr,
+    timeStr,
+    scheduledAtIso,
+    step: "confirm",
+    confirm: { ...EMPTY_CONFIRM_STATE },
+  })
+  if (session.rescheduleBookingId) {
+    await showRescheduleConfirmScreen(ctx, telegramId, scheduledAtIso)
+  } else {
+    await showConfirmScreen(ctx, telegramId, scheduledAtIso)
+  }
+  await ctx.answerCallbackQuery().catch(() => {})
+}
+
+/** User chose "Выбрать дату и время": show date selection. */
+export async function onChooseDate(ctx: Context): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  await showDateSelection(ctx, telegramId)
+  await ctx.answerCallbackQuery().catch(() => {})
+}
+
+/** User chose "Назад" from nearest-slot screen: show master list again. */
+export async function onNearestBack(ctx: Context): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  const session = getBookingSession(telegramId)
+  const { serviceId } = session
+  if (!serviceId) return
+  setBookingSession(telegramId, {
+    masterId: undefined,
+    masterName: undefined,
+    dateStr: undefined,
+    timeStr: undefined,
+    scheduledAtIso: undefined,
+    confirm: { ...EMPTY_CONFIRM_STATE },
+    step: "master",
+  })
+  const masters = await getMasters(serviceId)
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < masters.length; i++) {
+    keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
+    if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
+  }
+  const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите мастера:"
+  await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+  await ctx.answerCallbackQuery().catch(() => {})
 }
 
 /** Date must be after today and within 60 days (no same-day booking). */
@@ -519,15 +740,12 @@ export async function onMasterChosen(ctx: Context, masterId: string): Promise<vo
     })
     console.log("[wizard] step: master chosen", masterId)
 
-    const days = await getNext14DaysForMaster(masterId)
-    const keyboard = new InlineKeyboard()
-    for (let i = 0; i < days.length; i++) {
-      keyboard.text(days[i].label, `day:${days[i].date}`)
-      if ((i + 1) % DAYS_BUTTONS_PER_ROW === 0) keyboard.row()
+    const nearest = await getNearestAvailableSlot(serviceId, masterId)
+    if (nearest) {
+      await showNearestSlotScreen(ctx, telegramId, formatMasterDisplayName(master), nearest)
+    } else {
+      await showDateSelection(ctx, telegramId)
     }
-    keyboard.row().text("📅 Ввести дату", "manual_date")
-    const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите дату:"
-    await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
   } catch (e) {
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
     await handleBackendError(ctx, e, session)
@@ -565,15 +783,7 @@ export async function onDayChosen(ctx: Context, dateStr: string): Promise<void> 
       return
     }
 
-    setBookingSession(telegramId, { step: "time" })
-    const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
-    const keyboard = new InlineKeyboard()
-    for (let i = 0; i < toShow.length; i++) {
-      keyboard.text(slotLabel(toShow[i]), `t:${toShow[i]}`)
-      if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
-    }
-    const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите время:"
-    await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+    await showTimeSlotScreen(ctx, telegramId, serviceId, masterId, dateStr, slots, "Выберите время:", "morning")
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : ""
     const isToday = errMsg.includes("DATE_IS_TODAY") || errMsg.includes("current day")
@@ -666,15 +876,7 @@ export async function onDateEntered(
     return
   }
 
-  setBookingSession(telegramId, { step: "time" })
-  const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
-  const keyboard = new InlineKeyboard()
-  for (let i = 0; i < toShow.length; i++) {
-    keyboard.text(slotLabel(toShow[i]), `t:${toShow[i]}`)
-    if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
-  }
-  const text = buildSummary(getBookingSession(telegramId)) + "\n\nВыберите время:"
-  await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+  await showTimeSlotScreen(ctx, telegramId, serviceId, masterId, dateStr, slots, "Выберите время:", "morning")
 }
 
 /** After time slot selected: validate session, then show confirm screen. */
@@ -962,15 +1164,7 @@ async function showTimeSelection(
     await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
     return
   }
-  setBookingSession(telegramId, { step: "time" })
-  const toShow = slots.slice(0, MAX_SLOT_BUTTONS)
-  const keyboard = new InlineKeyboard()
-  for (let i = 0; i < toShow.length; i++) {
-    keyboard.text(slotLabel(toShow[i]), `t:${toShow[i]}`)
-    if ((i + 1) % SLOTS_PER_ROW === 0) keyboard.row()
-  }
-  const text = buildSummary(getBookingSession(telegramId)) + `\n\n${headerMessage}`
-  await editWizardMessage(ctx, getBookingSession(telegramId), text, keyboard)
+  await showTimeSlotScreen(ctx, telegramId, serviceId, masterId, dateStr, slots, headerMessage, "morning")
 }
 
 // ── Confirm navigation handlers ──────────────────────────────────────
