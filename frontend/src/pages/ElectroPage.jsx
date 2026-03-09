@@ -119,24 +119,31 @@ export function ElectroPage({ botUrl }) {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="service-hero">
-        <div className="service-hero-content">
-          <span className="service-eyebrow">Электроэпиляция</span>
-          <h1 className="service-h1">
-            Волосок за волоском.<br />Навсегда.
-          </h1>
-          <p className="service-lead">
-            Единственный метод, признанный FDA как постоянное удаление волос. 
-            Работает на любом цвете волос — светлых, рыжих, седых, пушковых. 
-            Apilus xCell Pro — минимальный дискомфорт, максимальный результат.
-          </p>
-          <div className="service-hero-actions">
-            <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
-              Записаться в Telegram
-            </a>
-            <span className="service-price-badge">от 900 ₽ / 15 мин</span>
+      <section className="serviceHero">
+        <div className="serviceHero__container">
+          <div className="serviceHero__grid">
+            <div className="serviceHero__content">
+              <span className="service-eyebrow">Электроэпиляция</span>
+              <h1 className="service-h1">
+                Волосок за волоском.<br />Навсегда.
+              </h1>
+              <p className="service-lead">
+                Единственный метод, признанный FDA как постоянное удаление волос. 
+                Работает на любом цвете волос — светлых, рыжих, седых, пушковых. 
+                Apilus xCell Pro — минимальный дискомфорт, максимальный результат.
+              </p>
+              <div className="service-hero-actions">
+                <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+                  Записаться в Telegram
+                </a>
+                <span className="service-price-badge">от 900 ₽ / 15 мин</span>
+              </div>
+              <p className="lp-hero-note">Консультация бесплатно · Одноразовые стерильные иглы</p>
+            </div>
+            <div className="serviceHero__media">
+              <img src="/images/electro-hero.jpg" alt="Электроэпиляция" className="serviceHero__image" />
+            </div>
           </div>
-          <p className="lp-hero-note">Консультация бесплатно · Одноразовые стерильные иглы</p>
         </div>
       </section>
 
@@ -302,7 +309,7 @@ export function ElectroPage({ botUrl }) {
       </section>
 
       {/* ── Зоны ── */}
-      <section className="service-section service-section--alt" ref={refZones}>
+      <section className="service-section" ref={refZones}>
         <div className={`service-section-inner fade-in-up ${visibleZones ? "visible" : ""}`}>
           <span className="lp-tag">Зоны и сроки</span>
           <h2 className="service-h2">Для каких зон подходит</h2>
@@ -399,7 +406,7 @@ export function ElectroPage({ botUrl }) {
       </section>
 
       {/* ── Подготовка и уход ── */}
-      <section className="service-section service-section--alt" ref={refPrep}>
+      <section className="service-section" ref={refPrep}>
         <div className={`service-section-inner fade-in-up ${visiblePrep ? "visible" : ""}`}>
           <span className="lp-tag">Памятка клиента</span>
           <h2 className="service-h2">Подготовка и уход после</h2>

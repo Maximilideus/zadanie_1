@@ -90,23 +90,30 @@ export function WaxPage({ botUrl }) {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="service-hero">
-        <div className="service-hero-content">
-          <span className="service-eyebrow">Восковая депиляция</span>
-          <h1 className="service-h1">
-            Гладко здесь и сейчас.<br />Без откладывания.
-          </h1>
-          <p className="service-lead">
-            Профессиональные плёночные воски ItalWax Premium — мгновенный результат 
-            для женщин и мужчин. Подходит для светлых волос. Работает без привязки к пигменту.
-          </p>
-          <div className="service-hero-actions">
-            <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
-              Записаться в Telegram
-            </a>
-            <span className="service-price-badge">от 400 ₽ за зону</span>
+      <section className="serviceHero">
+        <div className="serviceHero__container">
+          <div className="serviceHero__grid">
+            <div className="serviceHero__content">
+              <span className="service-eyebrow">Восковая депиляция</span>
+              <h1 className="service-h1">
+                Гладко здесь и сейчас.<br />Без откладывания.
+              </h1>
+              <p className="service-lead">
+                Профессиональные плёночные воски ItalWax Premium — мгновенный результат 
+                для женщин и мужчин. Подходит для светлых волос. Работает без привязки к пигменту.
+              </p>
+              <div className="service-hero-actions">
+                <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+                  Записаться в Telegram
+                </a>
+                <span className="service-price-badge">от 400 ₽ за зону</span>
+              </div>
+              <p className="lp-hero-note">Результат сразу после процедуры · Эффект 3–5 недель</p>
+            </div>
+            <div className="serviceHero__media">
+              <img src="/images/wax-hero.jpg" alt="Восковая депиляция" className="serviceHero__image" />
+            </div>
           </div>
-          <p className="lp-hero-note">Результат сразу после процедуры · Эффект 3–5 недель</p>
         </div>
       </section>
 
@@ -270,7 +277,7 @@ export function WaxPage({ botUrl }) {
       </section>
 
       {/* ── Зоны ── */}
-      <section className="service-section service-section--alt" ref={refZones}>
+      <section className="service-section" ref={refZones}>
         <div className={`service-section-inner fade-in-up ${visibleZones ? "visible" : ""}`}>
           <span className="lp-tag">Зоны обработки</span>
           <h2 className="service-h2">Для женщин и мужчин</h2>
@@ -365,7 +372,7 @@ export function WaxPage({ botUrl }) {
       </section>
 
       {/* ── Подготовка и уход ── */}
-      <section className="service-section service-section--alt" ref={refPrep}>
+      <section className="service-section" ref={refPrep}>
         <div className={`service-section-inner fade-in-up ${visiblePrep ? "visible" : ""}`}>
           <span className="lp-tag">Памятка клиента</span>
           <h2 className="service-h2">Подготовка и уход после</h2>

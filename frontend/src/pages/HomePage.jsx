@@ -16,22 +16,25 @@ function HeroSection({ botUrl }) {
         <div className="land-hero-circle land-hero-circle--1" />
         <div className="land-hero-circle land-hero-circle--2" />
       </div>
-      <div className="land-hero-content">
-        <p className="land-eyebrow">Студия депиляции и массажа · Москва</p>
-        <h1 className="land-h1">
-          Гладкость —<br />
-          <span className="land-h1-accent">это просто.</span>
-        </h1>
-        <p className="land-hero-sub">
-          Профессиональная депиляция и массаж для женщин и мужчин.
-          Аккуратно. Понятно. По честной цене.
-        </p>
-        <div className="landing-cta-buttons">
-          <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram">
-            Записаться в Telegram
-          </a>
+      <div className="heroGrid">
+        <div className="land-hero-content">
+          <p className="land-eyebrow">Студия депиляции и массажа · Москва</p>
+          <h1 className="land-h1">
+            Гладкость —<br />
+            <span className="land-h1-accent">это просто.</span>
+          </h1>
+          <p className="land-hero-sub">
+            Профессиональная депиляция и массаж для женщин и мужчин.
+            Аккуратно. Понятно. По честной цене.
+          </p>
+          <div className="landing-cta-buttons">
+            <a href={botUrl} target="_blank" rel="noopener noreferrer" className="land-btn-telegram">
+              Записаться в Telegram
+            </a>
+          </div>
+          <p className="land-hero-hint">Ответим быстро · Поможем выбрать процедуру</p>
         </div>
-        <p className="land-hero-hint">Ответим быстро · Поможем выбрать процедуру</p>
+        <img src="/images/hero-main.jpg" alt="Студия депиляции и массажа" className="heroMedia" />
       </div>
 
       {/* Статистика-бар под Hero */}
@@ -103,10 +106,21 @@ function WhyUsSection() {
   ];
 
   return (
-    <section className="land-section" ref={ref}>
+    <section className="land-section land-section--alt" ref={ref}>
       <div className={`land-section-inner fade-in-up ${isVisible ? "visible" : ""}`}>
         <p className="land-section-tag">Почему к нам возвращаются</p>
         <h2 className="land-h2">6 причин выбрать нас</h2>
+        <div className="heroGrid" style={{ marginBottom: "32px" }}>
+          <div>
+            <h3 className="land-h3" style={{ marginTop: 0 }}>
+              Комфортная процедура в спокойной обстановке
+            </h3>
+            <p className="land-hero-sub" style={{ margin: 0 }}>
+              Работаем аккуратно, без спешки и лишних обещаний. Подбираем метод под зону, чувствительность кожи и ваш запрос. Объясняем, чего ожидать от процедуры и какой результат реалистичен.
+            </p>
+          </div>
+          <img src="/images/clinic-treatment.jpg" alt="Кабинет и процедура" className="heroMedia" />
+        </div>
         <div className="land-advantages-grid">
           {cards.map((card, idx) => (
             <div key={idx} className="land-advantage-card" style={{ animationDelay: `${idx * 0.08}s` }}>
@@ -159,7 +173,7 @@ function ServicesSection() {
   ];
 
   return (
-    <section className="land-section land-section--alt" ref={ref}>
+    <section className="land-section" ref={ref}>
       <div className={`land-section-inner fade-in-up ${isVisible ? "visible" : ""}`}>
         <p className="land-section-tag">Наши услуги</p>
         <h2 className="land-h2">Три метода — один выбор</h2>
@@ -292,7 +306,7 @@ function MassageSection({ bookingLinkFallback, catalogData }) {
   ];
 
   return (
-    <section className="land-section land-section--alt" ref={ref}>
+    <section className="land-section" ref={ref}>
       <div className={`land-section-inner fade-in-up ${isVisible ? "visible" : ""}`}>
         <p className="land-section-tag">Массаж</p>
         <h2 className="land-h2">Массаж для восстановления</h2>
@@ -748,7 +762,7 @@ function CtaSection({ botUrl }) {
 
 function ContactsSection() {
   return (
-    <section className="land-section land-section--alt">
+    <section className="land-section">
       <div className="land-section-inner">
         <p className="land-section-tag">Контакты</p>
         <h2 className="land-h2">Как нас найти</h2>

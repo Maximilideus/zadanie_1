@@ -210,21 +210,21 @@ export function AdminMastersPage({ adminUser, onLogout }) {
   };
 
   return (
-    <div style={s.wrapper}>
-      <div style={s.container}>
+    <div className="admin-layout" style={s.wrapper}>
+      <div className="admin-container" style={s.container}>
         {/* Header */}
         <header style={s.header}>
           <div style={s.headerLeft}>
             <h1 style={s.title}>Мастера</h1>
-            <nav style={s.nav}>
-              <button onClick={() => navigate("/admin/bookings")} style={s.navBtn}>Записи</button>
-              <button onClick={() => navigate("/admin/catalog")} style={s.navBtn}>Каталог</button>
-              <button style={{ ...s.navBtn, ...s.navBtnActive }}>Мастера</button>
+            <nav className="admin-nav">
+              <button type="button" onClick={() => navigate("/admin/bookings")} className="admin-nav-btn">Записи</button>
+              <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
+              <button type="button" className="admin-nav-btn active">Мастера</button>
             </nav>
           </div>
           <div style={s.headerRight}>
             <span style={s.email}>{adminUser?.email}</span>
-            <button onClick={handleLogout} style={s.logoutBtn}>Выйти</button>
+            <button type="button" onClick={handleLogout} className="admin-logout-btn" style={s.logoutBtn}>Выйти</button>
           </div>
         </header>
 
@@ -243,7 +243,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
 
         {/* Create form */}
         {showCreate && (
-          <div style={s.createForm}>
+          <div className="admin-card" style={s.createForm}>
             <h3 style={s.createTitle}>Новый мастер</h3>
             <div style={s.createGrid}>
               <label style={s.fieldLabel}>
@@ -301,18 +301,18 @@ export function AdminMastersPage({ adminUser, onLogout }) {
         )}
 
         {/* Content */}
-        <section style={s.content}>
+        <section className="admin-card" style={s.content}>
           {loading ? (
             <p style={s.msg}>Загрузка…</p>
           ) : error ? (
-            <p style={{ ...s.msg, color: "#c44" }}>{error}</p>
+            <p style={{ ...s.msg, color: "#b91c1c" }}>{error}</p>
           ) : masters.length === 0 ? (
             <p style={s.msg}>Нет мастеров. Добавьте первого.</p>
           ) : (
             <>
               <div style={s.count}>Мастеров: {masters.length}</div>
-              <div style={s.tableWrap}>
-                <table style={s.table}>
+              <div className="admin-table-wrap">
+                <table className="admin-table">
                   <thead>
                     <tr>
                       <th style={s.th}>Имя</th>
@@ -570,80 +570,62 @@ function truncate(str, max) {
 }
 
 const s = {
-  wrapper: { minHeight: "100vh", background: "#f5f5f5" },
-  container: { maxWidth: "1300px", margin: "0 auto", padding: "24px 16px" },
+  wrapper: { minHeight: "100vh" },
+  container: {},
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
-    marginBottom: "20px",
+    marginBottom: "24px",
   },
   headerLeft: { display: "flex", alignItems: "center", gap: "20px" },
-  title: { margin: 0, fontSize: "24px", fontWeight: 700, color: "#1a1a1a" },
+  title: { margin: 0, fontSize: "24px", fontWeight: 700, color: "#111827" },
   headerRight: { display: "flex", alignItems: "center", gap: "12px" },
-  email: { fontSize: "14px", color: "#666" },
+  email: { fontSize: "14px", color: "#6b7280" },
   logoutBtn: {
-    padding: "8px 16px", border: "1px solid #ddd", borderRadius: "8px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#333",
-  },
-  nav: { display: "flex", gap: "4px" },
-  navBtn: {
-    padding: "6px 14px", border: "1px solid #ddd", borderRadius: "6px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#555",
-  },
-  navBtnActive: {
-    background: "#1a1a1a", color: "#fff", borderColor: "#1a1a1a",
+    padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
   },
   toolbar: {
-    display: "flex", gap: "12px", marginBottom: "20px", alignItems: "center",
+    display: "flex", gap: "12px", marginBottom: "24px", alignItems: "center",
   },
   addBtn: {
     padding: "8px 16px", border: "none", borderRadius: "8px",
-    background: "#1a8c3a", color: "#fff", fontSize: "13px", fontWeight: 600,
+    background: "#2563eb", color: "#fff", fontSize: "13px", fontWeight: 600,
     cursor: "pointer",
   },
   refreshBtn: {
-    padding: "8px 14px", border: "1px solid #ddd", borderRadius: "6px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#333",
+    padding: "8px 14px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
     marginLeft: "auto",
   },
   createForm: {
-    marginBottom: "20px", padding: "20px", background: "#fff",
-    borderRadius: "12px", boxShadow: "0 1px 8px rgba(0,0,0,0.06)",
+    marginBottom: "24px", padding: "20px",
   },
-  createTitle: { margin: "0 0 16px", fontSize: "16px", fontWeight: 700, color: "#1a1a1a" },
+  createTitle: { margin: "0 0 16px", fontSize: "16px", fontWeight: 700, color: "#111827" },
   createGrid: {
     display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
     gap: "12px",
   },
   fieldLabel: {
     display: "flex", flexDirection: "column", gap: "4px",
-    fontSize: "12px", fontWeight: 600, color: "#666",
+    fontSize: "12px", fontWeight: 600, color: "#6b7280",
   },
   input: {
-    padding: "8px 10px", border: "1px solid #ddd", borderRadius: "6px",
+    padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "8px",
     fontSize: "14px", background: "#fff",
   },
-  formError: { color: "#c44", fontSize: "13px", marginTop: "8px" },
+  formError: { color: "#b91c1c", fontSize: "13px", marginTop: "8px" },
   createBtn: {
     marginTop: "12px", padding: "8px 20px", border: "none", borderRadius: "8px",
-    background: "#1a8c3a", color: "#fff", fontSize: "13px", fontWeight: 600,
+    background: "#2563eb", color: "#fff", fontSize: "13px", fontWeight: 600,
     cursor: "pointer",
   },
-  content: {
-    background: "#fff", borderRadius: "12px", padding: "24px",
-    boxShadow: "0 1px 8px rgba(0,0,0,0.06)",
-  },
-  msg: { color: "#888", fontSize: "15px", textAlign: "center", padding: "32px 0" },
-  count: { fontSize: "13px", color: "#999", marginBottom: "12px" },
-  tableWrap: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "14px" },
-  th: {
-    textAlign: "left", padding: "10px 10px", borderBottom: "2px solid #eee",
-    fontSize: "12px", fontWeight: 700, color: "#888", textTransform: "uppercase",
-    letterSpacing: "0.5px", whiteSpace: "nowrap",
-  },
-  tr: { borderBottom: "1px solid #f0f0f0" },
-  trEditing: { borderBottom: "1px solid #f0f0f0", background: "#fafafa" },
-  td: { padding: "8px 10px", verticalAlign: "middle" },
+  content: { padding: "24px", marginBottom: "24px" },
+  msg: { color: "#6b7280", fontSize: "15px", textAlign: "center", padding: "32px 0" },
+  count: { fontSize: "13px", color: "#6b7280", marginBottom: "12px" },
+  th: {},
+  tr: { borderBottom: "1px solid #f3f4f6" },
+  trEditing: { background: "#f9fafb" },
+  td: {},
   nameCell: { display: "flex", alignItems: "center", gap: "8px" },
   avatar: {
     width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover",

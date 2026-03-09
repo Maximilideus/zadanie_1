@@ -161,26 +161,26 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
   };
 
   return (
-    <div style={s.wrapper}>
-      <div style={s.container}>
+    <div className="admin-layout" style={s.wrapper}>
+      <div className="admin-container" style={s.container}>
         {/* Header */}
         <header style={s.header}>
           <div style={s.headerLeft}>
             <h1 style={s.title}>Каталог</h1>
-            <nav style={s.nav}>
-              <button onClick={() => navigate("/admin/bookings")} style={s.navBtn}>Записи</button>
-              <button style={{ ...s.navBtn, ...s.navBtnActive }}>Каталог</button>
-              <button onClick={() => navigate("/admin/masters")} style={s.navBtn}>Мастера</button>
+            <nav className="admin-nav">
+              <button type="button" onClick={() => navigate("/admin/bookings")} className="admin-nav-btn">Записи</button>
+              <button type="button" className="admin-nav-btn active">Каталог</button>
+              <button type="button" onClick={() => navigate("/admin/masters")} className="admin-nav-btn">Мастера</button>
             </nav>
           </div>
           <div style={s.headerRight}>
             <span style={s.email}>{adminUser?.email}</span>
-            <button onClick={handleLogout} style={s.logoutBtn}>Выйти</button>
+            <button type="button" onClick={handleLogout} className="admin-logout-btn" style={s.logoutBtn}>Выйти</button>
           </div>
         </header>
 
         {/* Filters */}
-        <div style={s.filters}>
+        <div className="admin-filters-card" style={s.filters}>
           <div style={s.filterGroup}>
             <label style={s.filterLabel}>Категория</label>
             <select
@@ -201,11 +201,11 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
         </div>
 
         {/* Content */}
-        <section style={s.content}>
+        <section className="admin-card" style={s.content}>
           {loading ? (
             <p style={s.msg}>Загрузка…</p>
           ) : error ? (
-            <p style={{ ...s.msg, color: "#c44" }}>{error}</p>
+            <p style={{ ...s.msg, color: "#b91c1c" }}>{error}</p>
           ) : sorted.length === 0 ? (
             <p style={s.msg}>
               {filterCategory ? "В этой категории нет позиций." : "В каталоге пока нет позиций."}
@@ -213,8 +213,8 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
           ) : (
             <>
               <div style={s.count}>Позиций: {sorted.length}</div>
-              <div style={s.tableWrap}>
-                <table style={s.table}>
+              <div className="admin-table-wrap">
+                <table className="admin-table">
                   <thead>
                     <tr>
                       <th style={s.th}>Категория</th>
@@ -390,69 +390,50 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
 }
 
 const s = {
-  wrapper: { minHeight: "100vh", background: "#f5f5f5" },
-  container: { maxWidth: "1300px", margin: "0 auto", padding: "24px 16px" },
+  wrapper: { minHeight: "100vh" },
+  container: {},
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
-    marginBottom: "20px",
+    marginBottom: "24px",
   },
   headerLeft: { display: "flex", alignItems: "center", gap: "20px" },
-  title: { margin: 0, fontSize: "24px", fontWeight: 700, color: "#1a1a1a" },
+  title: { margin: 0, fontSize: "24px", fontWeight: 700, color: "#111827" },
   headerRight: { display: "flex", alignItems: "center", gap: "12px" },
-  email: { fontSize: "14px", color: "#666" },
+  email: { fontSize: "14px", color: "#6b7280" },
   logoutBtn: {
-    padding: "8px 16px", border: "1px solid #ddd", borderRadius: "8px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#333",
-  },
-  nav: { display: "flex", gap: "4px" },
-  navBtn: {
-    padding: "6px 14px", border: "1px solid #ddd", borderRadius: "6px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#555",
-  },
-  navBtnActive: {
-    background: "#1a1a1a", color: "#fff", borderColor: "#1a1a1a",
+    padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
   },
   filters: {
     display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end",
-    marginBottom: "20px", padding: "16px", background: "#fff",
-    borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
   },
   filterGroup: { display: "flex", flexDirection: "column", gap: "4px" },
-  filterLabel: { fontSize: "12px", fontWeight: 600, color: "#666" },
+  filterLabel: { fontSize: "12px", fontWeight: 600, color: "#6b7280" },
   filterSelect: {
-    padding: "8px 10px", border: "1px solid #ddd", borderRadius: "6px",
+    padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "8px",
     fontSize: "14px", minWidth: "160px", background: "#fff",
   },
   refreshBtn: {
-    padding: "8px 14px", border: "1px solid #ddd", borderRadius: "6px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#333",
+    padding: "8px 14px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
     marginLeft: "auto",
   },
-  content: {
-    background: "#fff", borderRadius: "12px", padding: "24px",
-    boxShadow: "0 1px 8px rgba(0,0,0,0.06)",
-  },
-  msg: { color: "#888", fontSize: "15px", textAlign: "center", padding: "32px 0" },
-  count: { fontSize: "13px", color: "#999", marginBottom: "12px" },
-  tableWrap: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "14px" },
-  th: {
-    textAlign: "left", padding: "10px 10px", borderBottom: "2px solid #eee",
-    fontSize: "12px", fontWeight: 700, color: "#888", textTransform: "uppercase",
-    letterSpacing: "0.5px", whiteSpace: "nowrap",
-  },
-  tr: { borderBottom: "1px solid #f0f0f0" },
-  trEditing: { borderBottom: "1px solid #f0f0f0", background: "#fafafa" },
-  td: { padding: "8px 10px", verticalAlign: "middle" },
-  sub: { display: "block", fontSize: "12px", color: "#999", marginTop: "2px" },
-  subText: { fontSize: "13px", color: "#999" },
+  content: { padding: "24px", marginBottom: "24px" },
+  msg: { color: "#6b7280", fontSize: "15px", textAlign: "center", padding: "32px 0" },
+  count: { fontSize: "13px", color: "#6b7280", marginBottom: "12px" },
+  th: {},
+  tr: { borderBottom: "1px solid #f3f4f6" },
+  trEditing: { background: "#f9fafb" },
+  td: {},
+  sub: { display: "block", fontSize: "12px", color: "#6b7280", marginTop: "2px" },
+  subText: { fontSize: "13px", color: "#6b7280" },
   badge: {
-    display: "inline-block", padding: "3px 10px", borderRadius: "12px",
+    display: "inline-block", padding: "4px 10px", borderRadius: "12px",
     fontSize: "11px", fontWeight: 600, color: "#fff", whiteSpace: "nowrap",
   },
-  typeLabel: { fontSize: "12px", color: "#666" },
+  typeLabel: { fontSize: "12px", color: "#6b7280" },
   editInput: {
-    padding: "5px 8px", border: "1px solid #ccc", borderRadius: "4px",
+    padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: "6px",
     fontSize: "13px", width: "100%", boxSizing: "border-box",
   },
   checkbox: { width: "18px", height: "18px", cursor: "pointer" },
@@ -462,9 +443,9 @@ const s = {
   },
   actions: { display: "flex", gap: "6px", flexWrap: "wrap" },
   actionBtn: {
-    padding: "5px 12px", border: "none", borderRadius: "6px",
+    padding: "6px 12px", border: "none", borderRadius: "6px",
     fontSize: "12px", fontWeight: 600, color: "#fff", cursor: "pointer",
     whiteSpace: "nowrap",
   },
-  saveError: { fontSize: "11px", color: "#c44", marginTop: "4px" },
+  saveError: { fontSize: "11px", color: "#b91c1c", marginTop: "4px" },
 };

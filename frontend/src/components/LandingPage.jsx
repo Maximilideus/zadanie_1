@@ -161,7 +161,7 @@ function LaserSection() {
 // Блок 3 — Восковая депиляция
 function WaxSection() {
   return (
-    <section id="service-wax" className="land-section land-section--alt land-section--service">
+    <section id="service-wax" className="land-section land-section--service">
       <div className="land-section-inner">
         <div className="land-service-header">
           <span className="land-service-icon">🌿</span>
@@ -452,7 +452,7 @@ function HowSection() {
     { n: "04", title: "Уход после",     text: "Рекомендации по уходу. Результат заметен через 2–3 недели." },
   ];
   return (
-    <section className="land-section land-section--alt">
+    <section className="land-section">
       <div className="land-section-inner">
         <p className="land-section-tag">Процедура</p>
         <h2 className="land-h2">Как это происходит</h2>
@@ -512,7 +512,7 @@ function PrepSection() {
 function MastersSection({ botUrl }) {
   const masters = Object.entries(MASTERS_DATA);
   return (
-    <section className="land-section land-section--alt">
+    <section className="land-section">
       <div className="land-section-inner">
         <p className="land-section-tag">Команда</p>
         <h2 className="land-h2">Наши специалисты</h2>

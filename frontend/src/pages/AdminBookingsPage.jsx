@@ -14,11 +14,11 @@ const STATUS_LABELS = {
   COMPLETED: "Завершена",
 };
 
-const STATUS_COLORS = {
-  PENDING: "#e8a800",
-  CONFIRMED: "#1a8c3a",
-  CANCELLED: "#b0b0b0",
-  COMPLETED: "#3366cc",
+const STATUS_CLASSES = {
+  PENDING: "admin-status-pending",
+  CONFIRMED: "admin-status-confirmed",
+  CANCELLED: "admin-status-cancelled",
+  COMPLETED: "admin-status-completed",
 };
 
 const VALID_ACTIONS = {
@@ -135,26 +135,26 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
   const hasFilters = filterStatus || filterDateFrom || filterDateTo || filterMaster;
 
   return (
-    <div style={s.wrapper}>
-      <div style={s.container}>
+    <div className="admin-layout" style={s.wrapper}>
+      <div className="admin-container" style={s.container}>
         {/* Header */}
         <header style={s.header}>
           <div style={s.headerLeft}>
             <h1 style={s.title}>Записи</h1>
-            <nav style={s.nav}>
-              <button style={{ ...s.navBtn, ...s.navBtnActive }}>Записи</button>
-              <button onClick={() => navigate("/admin/catalog")} style={s.navBtn}>Каталог</button>
-              <button onClick={() => navigate("/admin/masters")} style={s.navBtn}>Мастера</button>
+            <nav className="admin-nav">
+              <button type="button" className="admin-nav-btn active">Записи</button>
+              <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
+              <button type="button" onClick={() => navigate("/admin/masters")} className="admin-nav-btn">Мастера</button>
             </nav>
           </div>
           <div style={s.headerRight}>
             <span style={s.email}>{adminUser?.email}</span>
-            <button onClick={handleLogout} style={s.logoutBtn}>Выйти</button>
+            <button type="button" onClick={handleLogout} className="admin-logout-btn" style={s.logoutBtn}>Выйти</button>
           </div>
         </header>
 
         {/* Filters */}
-        <div style={s.filters}>
+        <div className="admin-filters-card" style={s.filters}>
           <div style={s.filterGroup}>
             <label style={s.filterLabel}>Статус</label>
             <select
@@ -205,12 +205,12 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
           </div>
 
           {hasFilters && (
-            <button onClick={clearFilters} style={s.clearBtn}>Сбросить</button>
+            <button type="button" onClick={clearFilters} className="admin-clear-btn" style={s.clearBtn}>Сбросить</button>
           )}
         </div>
 
         {/* Content */}
-        <section style={s.content}>
+        <section className="admin-card" style={s.content}>
           {loading ? (
             <p style={s.msg}>Загрузка…</p>
           ) : error ? (
@@ -224,8 +224,8 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
               <div style={s.count}>
                 Найдено записей: {bookings.length}
               </div>
-              <div style={s.tableWrap}>
-                <table style={s.table}>
+              <div className="admin-table-wrap">
+                <table className="admin-table">
                   <thead>
                     <tr>
                       <th style={s.th}>Клиент</th>
@@ -259,12 +259,7 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
                           <td style={s.td}>{formatDate(b.scheduledAt, SALON_TIMEZONE)}</td>
                           <td style={s.td}>{formatTime(b.scheduledAt, SALON_TIMEZONE)}</td>
                           <td style={s.td}>
-                            <span
-                              style={{
-                                ...s.badge,
-                                background: STATUS_COLORS[b.status] || "#888",
-                              }}
-                            >
+                            <span className={`admin-status-badge ${STATUS_CLASSES[b.status] || ""}`}>
                               {STATUS_LABELS[b.status] || b.status}
                             </span>
                           </td>
@@ -300,74 +295,49 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
 }
 
 const s = {
-  wrapper: { minHeight: "100vh", background: "#f5f5f5" },
-  container: { maxWidth: "1200px", margin: "0 auto", padding: "24px 16px" },
+  wrapper: { minHeight: "100vh" },
+  container: {},
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
-    marginBottom: "20px",
+    marginBottom: "24px",
   },
   headerLeft: { display: "flex", alignItems: "center", gap: "20px" },
-  title: { margin: 0, fontSize: "24px", fontWeight: 700, color: "#1a1a1a" },
+  title: { margin: 0, fontSize: "24px", fontWeight: 700, color: "#111827" },
   headerRight: { display: "flex", alignItems: "center", gap: "12px" },
-  nav: { display: "flex", gap: "4px" },
-  navBtn: {
-    padding: "6px 14px", border: "1px solid #ddd", borderRadius: "6px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#555",
-  },
-  navBtnActive: {
-    background: "#1a1a1a", color: "#fff", borderColor: "#1a1a1a",
-  },
-  email: { fontSize: "14px", color: "#666" },
+  email: { fontSize: "14px", color: "#6b7280" },
   logoutBtn: {
-    padding: "8px 16px", border: "1px solid #ddd", borderRadius: "8px",
-    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#333",
+    padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
   },
   filters: {
     display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end",
-    marginBottom: "20px", padding: "16px", background: "#fff",
-    borderRadius: "10px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
   },
   filterGroup: { display: "flex", flexDirection: "column", gap: "4px" },
-  filterLabel: { fontSize: "12px", fontWeight: 600, color: "#666" },
+  filterLabel: { fontSize: "12px", fontWeight: 600, color: "#6b7280" },
   filterSelect: {
-    padding: "8px 10px", border: "1px solid #ddd", borderRadius: "6px",
+    padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "8px",
     fontSize: "14px", minWidth: "140px", background: "#fff",
   },
   filterInput: {
-    padding: "8px 10px", border: "1px solid #ddd", borderRadius: "6px",
+    padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "8px",
     fontSize: "14px",
   },
   clearBtn: {
-    padding: "8px 14px", border: "none", borderRadius: "6px",
-    background: "#eee", fontSize: "13px", cursor: "pointer", color: "#555",
+    padding: "8px 14px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "13px", cursor: "pointer", color: "#6b7280",
     alignSelf: "flex-end",
   },
-  content: {
-    background: "#fff", borderRadius: "12px", padding: "24px",
-    boxShadow: "0 1px 8px rgba(0,0,0,0.06)",
-  },
-  msg: { color: "#888", fontSize: "15px", textAlign: "center", padding: "32px 0" },
-  count: { fontSize: "13px", color: "#999", marginBottom: "12px" },
-  tableWrap: { overflowX: "auto" },
-  table: {
-    width: "100%", borderCollapse: "collapse", fontSize: "14px",
-  },
-  th: {
-    textAlign: "left", padding: "10px 12px", borderBottom: "2px solid #eee",
-    fontSize: "12px", fontWeight: 700, color: "#888", textTransform: "uppercase",
-    letterSpacing: "0.5px", whiteSpace: "nowrap",
-  },
-  tr: { borderBottom: "1px solid #f0f0f0" },
-  td: { padding: "10px 12px", verticalAlign: "top" },
-  sub: { display: "block", fontSize: "12px", color: "#999", marginTop: "2px" },
-  subText: { fontSize: "12px", color: "#999" },
-  badge: {
-    display: "inline-block", padding: "3px 10px", borderRadius: "12px",
-    fontSize: "12px", fontWeight: 600, color: "#fff", whiteSpace: "nowrap",
-  },
+  content: { padding: "24px", marginBottom: "24px" },
+  msg: { color: "#6b7280", fontSize: "15px", textAlign: "center", padding: "32px 0" },
+  count: { fontSize: "13px", color: "#6b7280", marginBottom: "12px" },
+  th: {},
+  tr: {},
+  td: {},
+  sub: { display: "block", fontSize: "12px", color: "#6b7280", marginTop: "2px" },
+  subText: { fontSize: "12px", color: "#6b7280" },
   actions: { display: "flex", gap: "6px", flexWrap: "wrap" },
   actionBtn: {
-    padding: "5px 12px", border: "none", borderRadius: "6px",
+    padding: "6px 12px", border: "none", borderRadius: "6px",
     fontSize: "12px", fontWeight: 600, color: "#fff", cursor: "pointer",
     whiteSpace: "nowrap",
   },

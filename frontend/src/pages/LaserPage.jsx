@@ -91,24 +91,31 @@ export function LaserPage({ botUrl }) {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="service-hero">
-        <div className="service-hero-content">
-          <span className="service-eyebrow">Лазерная эпиляция</span>
-          <h1 className="service-h1">
-            Меньше волос.<br />Надолго. Честно.
-          </h1>
-          <p className="service-lead">
-            Диодный лазер Alma Soprano ICE — долгосрочное снижение роста волос 
-            для женщин и мужчин. Подходит для всех фототипов кожи. 
-            Параметры подбираются индивидуально.
-          </p>
-          <div className="service-hero-actions">
-            <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
-              Записаться в Telegram
-            </a>
-            <span className="service-price-badge">от 800 ₽ за зону</span>
+      <section className="serviceHero">
+        <div className="serviceHero__container">
+          <div className="serviceHero__grid">
+            <div className="serviceHero__content">
+              <span className="service-eyebrow">Лазерная эпиляция</span>
+              <h1 className="service-h1">
+                Меньше волос.<br />Надолго. Честно.
+              </h1>
+              <p className="service-lead">
+                Диодный лазер Alma Soprano ICE — долгосрочное снижение роста волос 
+                для женщин и мужчин. Подходит для всех фототипов кожи. 
+                Параметры подбираются индивидуально.
+              </p>
+              <div className="service-hero-actions">
+                <a href={buildTelegramStartLink("booking")} target="_blank" rel="noopener noreferrer" className="service-btn-primary">
+                  Записаться в Telegram
+                </a>
+                <span className="service-price-badge">от 800 ₽ за зону</span>
+              </div>
+              <p className="lp-hero-note">Консультация и тестовая вспышка — бесплатно</p>
+            </div>
+            <div className="serviceHero__media">
+              <img src="/images/laser-hero.jpg" alt="Лазерная эпиляция" className="serviceHero__image" />
+            </div>
           </div>
-          <p className="lp-hero-note">Консультация и тестовая вспышка — бесплатно</p>
         </div>
       </section>
 
@@ -276,7 +283,7 @@ export function LaserPage({ botUrl }) {
       </section>
 
       {/* ── Зоны ── */}
-      <section className="service-section service-section--alt" ref={refZones}>
+      <section className="service-section" ref={refZones}>
         <div className={`service-section-inner fade-in-up ${visibleZones ? "visible" : ""}`}>
           <span className="lp-tag">Зоны обработки</span>
           <h2 className="service-h2">Для женщин и мужчин</h2>
@@ -376,7 +383,7 @@ export function LaserPage({ botUrl }) {
       </section>
 
       {/* ── Подготовка и уход ── */}
-      <section className="service-section service-section--alt" ref={refPrep}>
+      <section className="service-section" ref={refPrep}>
         <div className={`service-section-inner fade-in-up ${visiblePrep ? "visible" : ""}`}>
           <span className="lp-tag">Памятка клиента</span>
           <h2 className="service-h2">Подготовка и уход после</h2>
