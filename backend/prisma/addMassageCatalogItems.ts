@@ -2,6 +2,7 @@
  * One-time script: insert MASSAGE CatalogItem records linked to existing Service records.
  *
  * Usage:  npx tsx prisma/addMassageCatalogItems.ts
+ * gj
  */
 /// <reference types="node" />
 import { PrismaClient, CatalogCategory, CatalogItemType, CatalogGender } from "@prisma/client"
