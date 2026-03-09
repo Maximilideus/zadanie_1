@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest } from "fastify"
 import { BookingService } from "../../services/BookingService"
-import { cancelBookingByTelegramId } from "../../modules/booking/booking.service"
+import { cancelBookingByTelegramId, rescheduleBookingByTelegramId } from "../../modules/booking/booking.service"
 
 const serviceBodySchema = {
   type: "object",
@@ -42,10 +42,23 @@ const cancelBodySchema = {
   additionalProperties: false,
 } as const
 
+const rescheduleBodySchema = {
+  type: "object",
+  required: ["telegramId", "bookingId", "masterId", "scheduledAt"],
+  properties: {
+    telegramId: { type: "string", minLength: 1 },
+    bookingId: { type: "string", minLength: 1 },
+    masterId: { type: "string", minLength: 1 },
+    scheduledAt: { type: "string", minLength: 1 },
+  },
+  additionalProperties: false,
+} as const
+
 type ServiceBody = { telegramId: string; serviceId: string }
 type MasterBody = { telegramId: string; masterId: string }
 type TimeBody = { telegramId: string; scheduledAt: string }
 type CancelBody = { telegramId: string; bookingId: string }
+type RescheduleBody = { telegramId: string; bookingId: string; masterId: string; scheduledAt: string }
 
 async function setServiceHandler(request: FastifyRequest<{ Body: ServiceBody }>) {
   const { telegramId, serviceId } = request.body
@@ -81,6 +94,16 @@ async function cancelBookingHandler(request: FastifyRequest<{ Body: CancelBody }
   return booking
 }
 
+async function rescheduleBookingHandler(request: FastifyRequest<{ Body: RescheduleBody }>) {
+  const { telegramId, bookingId, masterId, scheduledAt } = request.body
+  const newBooking = await rescheduleBookingByTelegramId(telegramId, bookingId, masterId, scheduledAt)
+  request.log.info(
+    { oldBookingId: bookingId, newBookingId: newBooking.id, telegramId, masterId, scheduledAt },
+    "Booking rescheduled by telegramId"
+  )
+  return newBooking
+}
+
 export async function bookingStepsRoutes(app: FastifyInstance) {
   app.post("/bookings/service", {
     schema: {
@@ -109,5 +132,12 @@ export async function bookingStepsRoutes(app: FastifyInstance) {
       response: { 200: { type: "object", additionalProperties: true } },
     },
     handler: cancelBookingHandler,
+  })
+  app.post("/bookings/reschedule", {
+    schema: {
+      body: rescheduleBodySchema,
+      response: { 200: { type: "object", additionalProperties: true } },
+    },
+    handler: rescheduleBookingHandler,
   })
 }

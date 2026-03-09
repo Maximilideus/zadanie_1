@@ -212,6 +212,38 @@ app.setErrorHandler((error, request, reply) => {
     })
   }
 
+  if (err.message === "RESCHEDULE_TOO_LATE") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "RESCHEDULE_TOO_LATE",
+    })
+  }
+
+  if (err.message === "BOOKING_NOT_RESCHEDULABLE") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "Booking cannot be rescheduled (wrong status or not found)",
+    })
+  }
+
+  if (err.message === "BOOKING_MISSING_SERVICE") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "Booking has no service set",
+    })
+  }
+
+  if (err.message === "SLOT_NOT_AVAILABLE") {
+    return reply.status(409).send({
+      statusCode: 409,
+      error: "Conflict",
+      message: "Selected slot is no longer available",
+    })
+  }
+
   if (err.message === "INVALID_SCHEDULED_AT") {
     return reply.status(400).send({
       statusCode: 400,

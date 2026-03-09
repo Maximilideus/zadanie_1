@@ -11,14 +11,19 @@ import {
   setBookingTime,
   ensureActiveBooking,
   updateTelegramState,
+  rescheduleBooking,
+  getUpcomingBookings,
   type ServiceItem,
+  type UpcomingBookingItem,
 } from "../api/backend.client.js"
 import {
   formatServiceDisplayName,
+  formatServiceNameOnly,
   formatServiceButtonLabel,
   formatBookingDate,
   formatBookingTime,
-  formatBookingSummary,
+  formatBookingCard,
+  formatBookingCardFromParts,
   formatMasterDisplayName,
   stripTrailingDuration,
 } from "../services/formatters.js"
@@ -68,6 +73,10 @@ export interface BookingSession {
   wizardMessageId?: { chatId: number; messageId: number }
   awaitingDate?: boolean
   confirm?: ConfirmState
+  /** Set when in reschedule flow: the booking to replace */
+  rescheduleBookingId?: string
+  /** One-line summary of the current booking (for reschedule confirm screen) */
+  rescheduleOldSummary?: string
 }
 
 const CATEGORY_SERVICE_PREFIX: Record<string, string> = {
@@ -117,15 +126,14 @@ function isSessionReadyForConfirm(session: BookingSession): boolean {
 }
 
 function buildSummary(session: BookingSession): string {
-  const serviceNameOnly = stripTrailingDuration(session.serviceName ?? "—")
-  const m = session.masterName ?? "—"
-  const d = session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—"
-  const t = session.timeStr ?? "—"
-  const lines = ["Услуга: " + serviceNameOnly]
-  if (session.catalogTitle) lines.push("Зона: " + session.catalogTitle)
-  if (session.durationMin != null) lines.push("Длительность: " + session.durationMin + " мин")
-  lines.push("Мастер: " + m, "Дата: " + d, "Время: " + t)
-  return lines.join("\n")
+  return formatBookingCardFromParts({
+    serviceName: stripTrailingDuration(session.serviceName ?? "—"),
+    zone: session.catalogElectroZone ?? session.catalogTitle,
+    durationMin: session.durationMin,
+    masterName: session.masterName ?? "—",
+    date: session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—",
+    time: session.timeStr ?? "—",
+  })
 }
 
 function serviceButtonLabel(s: ServiceItem): string {
@@ -318,6 +326,78 @@ export async function startWizardWithService(
     step: "master",
     wizardMessageId: { chatId: sent.chat.id, messageId: sent.message_id },
   })
+}
+
+/**
+ * Start reschedule wizard from an existing booking.
+ * Keeps service; user chooses new master, date, time. Ends with reschedule API call.
+ */
+export async function startRescheduleWizard(
+  ctx: Context,
+  booking: UpcomingBookingItem,
+): Promise<void> {
+  const from = ctx.from
+  if (!from) return
+
+  if (!booking.serviceId) {
+    await ctx.answerCallbackQuery({
+      text: "Не удалось начать перенос: у записи не указана услуга.",
+      show_alert: true,
+    }).catch(() => {})
+    return
+  }
+
+  const rescheduleOldSummary = formatBookingCard({
+    service: { ...booking.service, zone: undefined },
+    masterName: booking.masterName,
+    scheduledAt: booking.scheduledAt,
+  })
+
+  clearBookingSession(from.id)
+  setBookingSession(from.id, {
+    rescheduleBookingId: booking.id,
+    serviceId: booking.serviceId,
+    serviceName: formatServiceDisplayName(booking.service),
+    durationMin: booking.service.durationMin,
+    rescheduleOldSummary,
+    step: "master",
+  })
+
+  const masters = await getMasters(booking.serviceId)
+  if (masters.length === 0) {
+    const text =
+      "Перенос записи.\n\n" +
+      formatBookingCard({ service: { ...booking.service, zone: undefined }, masterName: booking.masterName, scheduledAt: booking.scheduledAt }) +
+      "\n\nНет доступных мастеров для этой услуги."
+    const msg = ctx.callbackQuery?.message
+    if (msg && "chat" in msg && "message_id" in msg) {
+      await ctx.api.editMessageText(msg.chat.id, msg.message_id, text).catch(() => {})
+    }
+    await ctx.answerCallbackQuery().catch(() => {})
+    return
+  }
+
+  const keyboard = new InlineKeyboard()
+  for (let i = 0; i < masters.length; i++) {
+    keyboard.text(formatMasterDisplayName(masters[i]), `mst:${masters[i].id}`)
+    if ((i + 1) % MASTER_BUTTONS_PER_ROW === 0) keyboard.row()
+  }
+
+  const text =
+    "Перенос записи.\n\n" +
+    formatBookingCard({ service: { ...booking.service, zone: undefined }, masterName: booking.masterName, scheduledAt: booking.scheduledAt }) +
+    "\n\nВыберите мастера:"
+
+  const msg = ctx.callbackQuery?.message
+  if (msg && "chat" in msg && "message_id" in msg) {
+    setBookingSession(from.id, {
+      wizardMessageId: { chatId: msg.chat.id, messageId: msg.message_id },
+    })
+    await ctx.api.editMessageText(msg.chat.id, msg.message_id, text, {
+      reply_markup: keyboard,
+    }).catch(() => {})
+  }
+  await ctx.answerCallbackQuery().catch(() => {})
 }
 
 /** Start or resume wizard: ensure booking, show single wizard message (step A or current step). */
@@ -619,7 +699,11 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
       scheduledAtIso,
       confirm: { ...EMPTY_CONFIRM_STATE },
     })
-    await showConfirmScreen(ctx, telegramId, scheduledAtIso)
+    if (session.rescheduleBookingId) {
+      await showRescheduleConfirmScreen(ctx, telegramId, scheduledAtIso)
+    } else {
+      await showConfirmScreen(ctx, telegramId, scheduledAtIso)
+    }
   } catch (e) {
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
     await handleBackendError(ctx, e, session)
@@ -627,24 +711,17 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
 }
 
 function buildConfirmText(session: BookingSession): string {
-  const serviceNameOnly = stripTrailingDuration(session.serviceName ?? "—")
-  const master = session.masterName ?? "—"
-  const date = session.dateStr
-    ? formatBookingDate(session.dateStr + "T12:00:00Z")
-    : "—"
-  const time = session.timeStr ?? "—"
-
-  const lines = ["Проверьте данные записи\n", `Услуга: ${serviceNameOnly}`]
-  const zone = session.catalogElectroZone ?? session.catalogTitle
-  if (zone) lines.push(`Зона: ${zone}`)
-  if (session.durationMin != null) lines.push(`Длительность: ${session.durationMin} мин`)
-  lines.push("")
-  lines.push(`Мастер: ${master}`)
-  lines.push(`Дата: ${date}`)
-  lines.push(`Время: ${time}`)
-  if (session.price != null) lines.push(`Цена: ${session.price} ₽`)
-  lines.push("")
-  lines.push("Запись будет создана и ожидать подтверждения салоном.")
+  const card = formatBookingCardFromParts({
+    serviceName: stripTrailingDuration(session.serviceName ?? "—"),
+    zone: session.catalogElectroZone ?? session.catalogTitle,
+    durationMin: session.durationMin,
+    masterName: session.masterName ?? "—",
+    date: session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—",
+    time: session.timeStr ?? "—",
+  })
+  const lines = ["Проверьте данные записи\n", card]
+  if (session.price != null) lines.push("", `Цена: ${session.price} ₽`)
+  lines.push("", "Запись будет создана и ожидать подтверждения салоном.")
   lines.push("После подтверждения изменить время или мастера нельзя — только отменить и оформить заново.")
   return lines.join("\n")
 }
@@ -660,6 +737,44 @@ function buildConfirmKeyboard(scheduledAtIso: string): InlineKeyboard {
     .text("🔄 Другая услуга", "another_service")
     .row()
     .text("❌ Отмена", "cancel_flow")
+}
+
+function buildRescheduleConfirmText(session: BookingSession): string {
+  const oldPart = "Текущая запись:\n" + (session.rescheduleOldSummary ?? "—")
+  const newPart =
+    "Новая запись:\n" +
+    formatBookingCardFromParts({
+      serviceName: stripTrailingDuration(session.serviceName ?? "—"),
+      zone: session.catalogElectroZone ?? session.catalogTitle,
+      durationMin: session.durationMin,
+      masterName: session.masterName ?? "—",
+      date: session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—",
+      time: session.timeStr ?? "—",
+    })
+  return "Перенос записи\n\n" + oldPart + "\n\n" + newPart + "\n\nНажмите «Подтвердить перенос», чтобы заменить текущую запись на новую."
+}
+
+function buildRescheduleConfirmKeyboard(scheduledAtIso: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Подтвердить перенос", `confirm_reschedule:${scheduledAtIso}`)
+    .row()
+    .text("🕒 Другое время", "edit_time")
+    .text("📅 Другая дата", "edit_date")
+    .row()
+    .text("👩 Другой мастер", "edit_master")
+    .row()
+    .text("❌ Отмена", "cancel_flow")
+}
+
+async function showRescheduleConfirmScreen(
+  ctx: Context,
+  telegramId: number,
+  scheduledAtIso: string,
+): Promise<void> {
+  const session = getBookingSession(telegramId)
+  const text = buildRescheduleConfirmText(session)
+  const keyboard = buildRescheduleConfirmKeyboard(scheduledAtIso)
+  await editWizardMessage(ctx, session, text, keyboard)
 }
 
 async function showConfirmScreen(ctx: Context, telegramId: number, scheduledAtIso: string): Promise<void> {
@@ -727,23 +842,100 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
     return
   }
 
-  const serviceNameOnly = stripTrailingDuration(session.serviceName ?? "—")
-  const summary = formatBookingSummary({
-    serviceDisplayName: serviceNameOnly,
+  const card = formatBookingCardFromParts({
+    serviceName: stripTrailingDuration(session.serviceName ?? "—"),
+    zone: session.catalogElectroZone ?? session.catalogTitle,
+    durationMin: session.durationMin,
     masterName: session.masterName ?? "—",
-    scheduledAt: scheduledAtIso,
+    date: formatBookingDate(scheduledAtIso),
+    time: formatBookingTime(scheduledAtIso),
   })
   clearBookingSession(telegramId)
   console.log("[wizard] booking confirmed and created")
   await ctx.editMessageText(
-    "Запись создана и ожидает подтверждения администратора.\n\n" +
-      `Услуга: ${summary.service}\n` +
-      (session.durationMin != null ? `Длительность: ${session.durationMin} мин\n` : "") +
-      `Мастер: ${summary.master}\n` +
-      `Дата: ${summary.date}\n` +
-      `Время: ${summary.time}\n\n` +
-      "Мои записи: /my_bookings"
+    "Запись создана и ожидает подтверждения администратора.\n\n" + card + "\n\nМои записи: /my_bookings"
   )
+}
+
+/** Confirm reschedule: call API, on success show new booking; on SLOT_NOT_AVAILABLE return to time selection. */
+export async function onConfirmReschedule(ctx: Context, scheduledAtIso: string): Promise<void> {
+  const telegramId = ctx.from?.id
+  if (!telegramId) return
+  const tid = String(telegramId)
+  const session = getBookingSession(telegramId)
+
+  const bookingId = session.rescheduleBookingId
+  const masterId = session.masterId
+
+  if (!bookingId || !masterId || !session.serviceId || !session.dateStr) {
+    await ctx.answerCallbackQuery({
+      text: "Данные неполны. Начните перенос заново: /my_bookings",
+      show_alert: true,
+    }).catch(() => {})
+    return
+  }
+
+  try {
+    const newBooking = await rescheduleBooking(tid, bookingId, masterId, scheduledAtIso)
+    clearBookingSession(telegramId)
+
+    const newCard = formatBookingCardFromParts({
+      serviceName: stripTrailingDuration(session.serviceName ?? "—"),
+      zone: session.catalogElectroZone ?? session.catalogTitle,
+      durationMin: session.durationMin,
+      masterName: session.masterName ?? "—",
+      date: newBooking.scheduledAt ? formatBookingDate(newBooking.scheduledAt) : "—",
+      time: newBooking.scheduledAt ? formatBookingTime(newBooking.scheduledAt) : "—",
+    })
+
+    await ctx.editMessageText(
+      "✅ Запись перенесена.\n\nНовая запись:\n" + newCard + "\n\nСтатус: ожидает подтверждения\n\nМои записи: /my_bookings"
+    )
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : ""
+    const isSlotTaken =
+      msg.includes("SLOT_NOT_AVAILABLE") ||
+      msg.includes("Selected slot is no longer available")
+    if (isSlotTaken) {
+      setBookingSession(telegramId, {
+        timeStr: undefined,
+        scheduledAtIso: undefined,
+        confirm: { ...EMPTY_CONFIRM_STATE },
+      })
+      await ctx.answerCallbackQuery({
+        text: "К сожалению, это время только что занял другой клиент. Пожалуйста, выберите другое время.",
+        show_alert: true,
+      }).catch(() => {})
+      await showTimeSelection(
+        ctx,
+        telegramId,
+        session.serviceId,
+        masterId,
+        session.dateStr,
+        "К сожалению, это время только что занял другой клиент. Пожалуйста, выберите другое время:"
+      )
+      return
+    }
+    if (msg.includes("RESCHEDULE_TOO_LATE")) {
+      clearBookingSession(telegramId)
+      const bookings = await getUpcomingBookings(tid)
+      const booking = bookings.find((b) => b.id === session.rescheduleBookingId)
+      const card = booking
+        ? formatBookingCard({ service: booking.service, masterName: booking.masterName, scheduledAt: booking.scheduledAt })
+        : ""
+      const text =
+        "⏳ До записи осталось меньше 4 часов\n\n" +
+        (card ? card + "\n\n" : "") +
+        "Перенести запись можно не позднее чем за 4 часа до начала.\n\n" +
+        "Если вам нужно срочно изменить запись, пожалуйста свяжитесь с нами напрямую.\n\n" +
+        "Мои записи: /my_bookings"
+      await ctx.editMessageText(text)
+      await ctx.answerCallbackQuery().catch(() => {})
+      return
+    }
+    await handleBackendError(ctx, e, session)
+  }
 }
 
 /** Show time slot selection for a given date. Used after confirm-time-unavailable. */
@@ -860,13 +1052,17 @@ export async function onChooseAnotherService(ctx: Context): Promise<void> {
 export async function onCancelFlow(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
+  const wasReschedule = !!getBookingSession(telegramId).rescheduleBookingId
   clearBookingSession(telegramId)
   try {
     await updateTelegramState(String(telegramId), "IDLE")
   } catch {
     // Best-effort: state may already be IDLE (deep link flow never changes it).
   }
-  await ctx.editMessageText("Оформление отменено. Записаться: /book · Консультация: /consult")
+  const text = wasReschedule
+    ? "Перенос отменён. Ваша запись не изменилась.\n\nМои записи: /my_bookings"
+    : "Оформление отменено. Записаться: /book · Консультация: /consult"
+  await ctx.editMessageText(text)
 }
 
 /** User pressed Back: return to DATE selection (not time). */
@@ -915,6 +1111,14 @@ async function handleBackendError(
     text = "Введите дату в диапазоне от завтра до 60 дней вперёд (ГГГГ-ММ-ДД)."
   } else if (msg.includes("DATE_IS_TODAY") || msg.includes("current day")) {
     text = "Запись на сегодня недоступна. Пожалуйста, выберите другую дату."
+  } else if (msg.includes("BOOKING_NOT_RESCHEDULABLE") && session.rescheduleBookingId) {
+    text = "Эту запись нельзя перенести (возможно, она уже отменена или изменена). Мои записи: /my_bookings"
+    clearBookingSession(ctx.from!.id)
+  } else if (
+    session.rescheduleBookingId &&
+    (msg.includes("SLOT_NOT_AVAILABLE") || msg.includes("Selected slot is no longer available"))
+  ) {
+    text = "К сожалению, это время только что занял другой клиент. Пожалуйста, выберите другое время."
   } else if (msg.includes("MASTER_NOT_AVAILABLE")) {
     text = "Этот специалист сейчас недоступен. Пожалуйста, выберите другого мастера."
     const telegramId = ctx.from?.id

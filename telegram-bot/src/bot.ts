@@ -2,7 +2,8 @@ import "dotenv/config"
 import { Bot } from "grammy"
 import { telegramAuth, getUserByTelegramId, updateTelegramState, getUpcomingBookings, hasActiveBooking, cancelBookingById } from "./api/backend.client.js"
 import { InlineKeyboard } from "grammy"
-import { formatServiceDisplayName, formatServiceNameOnly, formatBookingDate, formatBookingTime, formatMasterDisplayName } from "./services/formatters.js"
+import { formatServiceDisplayName, formatBookingCard, formatBookingDate, formatBookingTime } from "./services/formatters.js"
+import { canCancelOrReschedule } from "./utils/bookingCutoff.js"
 import { stateRouter } from "./router/state.router.js"
 import { startConsultationFromDeepLink, getConsultCategoryLabel } from "./handlers/consulting.handler.js"
 import { parseCatalogPayload, resolveCatalogDeepLink, formatCatalogIntro } from "./services/deeplink.js"
@@ -14,6 +15,7 @@ import {
   onDateEntered,
   onTimeSlotChosen,
   onConfirmBooking,
+  onConfirmReschedule,
   onTimeBack,
   onEditTime,
   onEditDate,
@@ -23,6 +25,7 @@ import {
   getBookingSession,
   clearBookingSession,
   startWizardWithService,
+  startRescheduleWizard,
   isDateString,
   isStaleWizardCallback,
   handleStaleCallback,
@@ -345,26 +348,23 @@ function buildBookingListMessage(bookings: Awaited<ReturnType<typeof getUpcoming
   const lines = ["📋 Ваши записи"]
 
   bookings.forEach((b, i) => {
-    const serviceName = formatServiceNameOnly(b.service)
-    const masterDisplay = formatMasterDisplayName(b.masterName)
-    const durationMin = b.service.durationMin
     const status = STATUS_LABELS[b.status] ?? b.status
-
     lines.push("")
-    lines.push(`━━━━━━━━━━━━━━━━━━━━`)
-    lines.push(`📅 Запись #${i + 1}`)
+    lines.push(`📌 Запись #${i + 1}`)
     lines.push("")
-    lines.push(`Услуга: ${serviceName}`)
-    if (durationMin != null) lines.push(`Длительность: ${durationMin} мин`)
-    lines.push(`Мастер: ${masterDisplay}`)
-    lines.push(`Дата: ${formatBookingDate(b.scheduledAt)}`)
-    lines.push(`Время: ${formatBookingTime(b.scheduledAt)}`)
+    lines.push(formatBookingCard({ service: b.service, masterName: b.masterName, scheduledAt: b.scheduledAt }))
+    lines.push("")
     lines.push(`Статус: ${status}`)
   })
 
   const keyboard = new InlineKeyboard()
   bookings.forEach((b, i) => {
-    keyboard.text(`❌ Отменить #${i + 1}`, `cancel_bk:${b.id}`).row()
+    if (canCancelOrReschedule(b.scheduledAt)) {
+      keyboard
+        .text(`🔄 Перенести #${i + 1}`, `reschedule_bk:${b.id}`)
+        .text(`❌ Отменить #${i + 1}`, `cancel_bk:${b.id}`)
+        .row()
+    }
   })
   return { text: lines.join("\n"), keyboard }
 }
@@ -617,6 +617,20 @@ bot.callbackQuery(/^confirm:(.+)$/, async (ctx) => {
   }
 })
 
+bot.callbackQuery(/^confirm_reschedule:(.+)$/, async (ctx) => {
+  try {
+    if (ctx.from && isStaleWizardCallback(ctx.from.id, "confirm")) {
+      await handleStaleCallback(ctx)
+      return
+    }
+    await onConfirmReschedule(ctx, ctx.match[1])
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    console.error("[wizard] confirm_reschedule callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+  }
+})
+
 bot.callbackQuery("time_back", async (ctx) => {
   try {
     await onTimeBack(ctx)
@@ -677,6 +691,23 @@ bot.callbackQuery("cancel_flow", async (ctx) => {
   }
 })
 
+bot.callbackQuery(/^reschedule_bk:(.+)$/, async (ctx) => {
+  try {
+    const bookingId = ctx.match[1]
+    const telegramId = String(ctx.from.id)
+    const bookings = await getUpcomingBookings(telegramId)
+    const booking = bookings.find((b) => b.id === bookingId)
+    if (!booking) {
+      await ctx.answerCallbackQuery({ text: "Запись не найдена.", show_alert: true })
+      return
+    }
+    await startRescheduleWizard(ctx, booking)
+  } catch (e) {
+    console.error("[my_bookings] reschedule_bk callback error", e)
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте позже: /my_bookings", show_alert: true }).catch(() => {})
+  }
+})
+
 bot.callbackQuery(/^cancel_bk:(.+)$/, async (ctx) => {
   try {
     const bookingId = ctx.match[1]
@@ -687,14 +718,9 @@ bot.callbackQuery(/^cancel_bk:(.+)$/, async (ctx) => {
       await ctx.answerCallbackQuery({ text: "Запись не найдена.", show_alert: true })
       return
     }
-    const serviceDisplay = formatServiceDisplayName(booking.service)
-    const masterDisplay = formatMasterDisplayName(booking.masterName)
     const text =
       "Отменить эту запись?\n\n" +
-      `Услуга: ${serviceDisplay}\n` +
-      `Мастер: ${masterDisplay}\n` +
-      `Дата: ${formatBookingDate(booking.scheduledAt)}\n` +
-      `Время: ${formatBookingTime(booking.scheduledAt)}`
+      formatBookingCard({ service: booking.service, masterName: booking.masterName, scheduledAt: booking.scheduledAt })
     const keyboard = new InlineKeyboard()
       .text("Да, отменить", `cancel_bk_yes:${bookingId}`)
       .text("Нет, назад", "cancel_bk_no")
@@ -715,10 +741,18 @@ bot.callbackQuery(/^cancel_bk_yes:(.+)$/, async (ctx) => {
     } catch (e) {
       const msg = e instanceof Error ? e.message : ""
       if (msg.includes("CANCELLATION_TOO_LATE")) {
-        await ctx.editMessageText(
-          "Отменить запись можно не позднее чем за 4 часа до визита.\n\n" +
+        const bookings = await getUpcomingBookings(telegramId)
+        const booking = bookings.find((b) => b.id === bookingId)
+        const card = booking
+          ? formatBookingCard({ service: booking.service, masterName: booking.masterName, scheduledAt: booking.scheduledAt })
+          : ""
+        const text =
+          "⏳ До записи осталось меньше 4 часов\n\n" +
+          (card ? card + "\n\n" : "") +
+          "Отменить запись можно не позднее чем за 4 часа до начала.\n\n" +
+          "Если ситуация срочная, пожалуйста свяжитесь с нами напрямую.\n\n" +
           "Мои записи: /my_bookings"
-        )
+        await ctx.editMessageText(text)
         await ctx.answerCallbackQuery().catch(() => {})
         return
       }

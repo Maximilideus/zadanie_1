@@ -9,6 +9,7 @@ import { prisma } from "../../lib/prisma"
 import { updateBookingStatus } from "../booking/booking.service"
 import type { BookingStatus } from "../booking/booking.status.machine"
 import { sendBookingStatusNotification } from "../../services/bookingNotifications"
+import { getServiceDisplayName } from "../../services/serviceDisplayName"
 
 const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/
 function parseSalonDate(dateStr: string): Date {
@@ -231,20 +232,30 @@ export async function adminRoutes(app: FastifyInstance) {
         },
       }).then(async (booking) => {
         if (!booking?.user?.telegramId) return
-        const [service, master] = await Promise.all([
+        const [service, master, catalogItem] = await Promise.all([
           booking.serviceId
-            ? prisma.service.findUnique({ where: { id: booking.serviceId }, select: { name: true } })
+            ? prisma.service.findUnique({ where: { id: booking.serviceId }, select: { name: true, durationMin: true } })
             : null,
           booking.masterId
             ? prisma.user.findUnique({ where: { id: booking.masterId }, select: { name: true } })
             : null,
+          booking.serviceId
+            ? prisma.catalogItem.findFirst({
+                where: { serviceId: booking.serviceId },
+                select: { titleRu: true },
+                orderBy: { sortOrder: "asc" },
+              })
+            : null,
         ])
+        const serviceDisplayName = service?.name ? getServiceDisplayName(service.name) : null
         await sendBookingStatusNotification({
           telegramId: booking.user.telegramId,
           newStatus,
-          serviceName: service?.name ?? null,
+          serviceName: serviceDisplayName ?? service?.name ?? null,
           masterName: master?.name ?? null,
           scheduledAt: booking.scheduledAt,
+          durationMin: service?.durationMin ?? null,
+          zone: catalogItem?.titleRu ?? null,
         })
       }).catch((err) => {
         console.error("[admin] Booking notification error (non-fatal):", err)

@@ -100,6 +100,56 @@ export function formatBookingSummary(input: {
   }
 }
 
+export type BookingCardInput = {
+  service: ServiceLike & { displayName?: string; zone?: string }
+  masterName: string
+  scheduledAt: Date | string
+}
+
+/**
+ * Single reusable booking card format. Uses backend displayName when present;
+ * otherwise formatServiceNameOnly(service) so no raw internal names like "Electro 15 min".
+ */
+export function formatBookingCard(booking: BookingCardInput): string {
+  const serviceName =
+    (booking.service as { displayName?: string }).displayName ??
+    formatServiceNameOnly(booking.service)
+  const zone = (booking.service as { zone?: string }).zone
+  const durationMin = booking.service.durationMin
+  const master = formatMasterDisplayName(booking.masterName)
+  const date = formatBookingDate(booking.scheduledAt)
+  const time = formatBookingTime(booking.scheduledAt)
+  return formatBookingCardFromParts({
+    serviceName,
+    zone,
+    durationMin,
+    masterName: master,
+    date,
+    time,
+  })
+}
+
+/** Same card format from pre-formatted parts (e.g. from session). */
+export function formatBookingCardFromParts(parts: {
+  serviceName: string
+  zone?: string
+  durationMin?: number
+  masterName: string
+  date: string
+  time: string
+}): string {
+  const lines: string[] = [
+    `📋 Услуга: ${parts.serviceName}`,
+    ...(parts.zone ? [`📍 Зона: ${parts.zone}`] : []),
+    ...(parts.durationMin != null ? [`⏱ Длительность: ${parts.durationMin} мин`] : []),
+    "",
+    `👩‍⚕️ Мастер: ${parts.masterName}`,
+    `📅 Дата: ${parts.date}`,
+    `⏰ Время: ${parts.time}`,
+  ]
+  return lines.join("\n")
+}
+
 const MASTER_NAME_MAP: Record<string, string> = {
   Anna: "Анна",
   Elena: "Елена",

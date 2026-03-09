@@ -1,8 +1,11 @@
 import { Prisma, type BookingStatus as PrismaBookingStatus } from "@prisma/client"
+import { DateTime } from "luxon"
 import { prisma } from "../../lib/prisma"
 import type { BookingStatus, BookingAction } from "./booking.status.machine"
 import { transition } from "./booking.status.machine"
 import { SALON_TIMEZONE } from "../../config/salon"
+import { getAvailableSlots } from "../../services/AvailabilityService"
+import { getServiceDisplayName } from "../../services/serviceDisplayName"
 
 const SCHEMA_SYNC_MESSAGE =
   "Database schema is not synchronized. Please run prisma migrate."
@@ -180,6 +183,106 @@ export async function cancelBookingByTelegramId(telegramId: string, bookingId: s
   return cancelBooking(user.id, bookingId)
 }
 
+export async function rescheduleBookingByTelegramId(
+  telegramId: string,
+  currentBookingId: string,
+  newMasterId: string,
+  newScheduledAt: string
+) {
+  const user = await prisma.user.findUnique({
+    where: { telegramId },
+    select: { id: true },
+  })
+  if (!user) throw new Error("NOT_FOUND")
+
+  const current = await prisma.booking.findFirst({
+    where: { id: currentBookingId, userId: user.id },
+    select: {
+      id: true,
+      userId: true,
+      serviceId: true,
+      locationId: true,
+      status: true,
+      scheduledAt: true,
+    },
+  })
+  if (!current) throw new Error("NOT_FOUND")
+  if (current.status !== "PENDING" && current.status !== "CONFIRMED") {
+    throw new Error("BOOKING_NOT_RESCHEDULABLE")
+  }
+  if (!current.serviceId) throw new Error("BOOKING_MISSING_SERVICE")
+  if (!current.scheduledAt) throw new Error("BOOKING_MISSING_SCHEDULED_AT")
+
+  const now = new Date()
+  const remainingMs = current.scheduledAt.getTime() - now.getTime()
+  const cutoffMs = CANCEL_MIN_HOURS * 60 * 60 * 1000
+  if (remainingMs <= cutoffMs) {
+    throw new Error("RESCHEDULE_TOO_LATE")
+  }
+
+  const parsedScheduledAt = new Date(newScheduledAt)
+  if (Number.isNaN(parsedScheduledAt.getTime())) {
+    throw new Error("INVALID_SCHEDULED_AT")
+  }
+
+  const dateStr = DateTime.fromJSDate(parsedScheduledAt, { zone: SALON_TIMEZONE }).toFormat("yyyy-MM-dd")
+  const { slots } = await getAvailableSlots({
+    serviceId: current.serviceId,
+    masterId: newMasterId,
+    date: dateStr,
+  })
+  const slotSet = new Set(slots.map((s) => new Date(s).getTime()))
+  if (!slotSet.has(parsedScheduledAt.getTime())) {
+    throw new Error("SLOT_NOT_AVAILABLE")
+  }
+
+  let locationId = current.locationId
+  if (!locationId) {
+    const service = await prisma.service.findUnique({
+      where: { id: current.serviceId },
+      select: { locationId: true },
+    })
+    if (!service) throw new Error("NOT_FOUND")
+    locationId = service.locationId
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const now = new Date()
+    await tx.booking.update({
+      where: { id: currentBookingId },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: now,
+      },
+    })
+    const newBooking = await tx.booking.create({
+      data: {
+        userId: current.userId,
+        serviceId: current.serviceId,
+        locationId,
+        masterId: newMasterId,
+        scheduledAt: parsedScheduledAt,
+        status: "PENDING",
+      },
+      select: {
+        id: true,
+        userId: true,
+        serviceId: true,
+        masterId: true,
+        locationId: true,
+        status: true,
+        scheduledAt: true,
+        createdAt: true,
+        updatedAt: true,
+        confirmedAt: true,
+        cancelledAt: true,
+        completedAt: true,
+      },
+    })
+    return newBooking
+  })
+}
+
 export async function updateBookingStatus(bookingId: string, newStatus: BookingStatus) {
   let booking: { id: string; status: string } | null = null
   try {
@@ -229,7 +332,7 @@ export async function getBookingsByTelegramId(telegramId: string) {
   }
 }
 
-/** Upcoming bookings for Telegram: scheduledAt > now, with service and master names, limit 10. */
+/** Upcoming bookings for Telegram: scheduledAt > now, with service (displayName, zone, duration), master, status. */
 export async function getUpcomingBookingsByTelegramId(telegramId: string) {
   const user = await prisma.user.findUnique({
     where: { telegramId },
@@ -252,7 +355,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
   if (bookings.length === 0) return []
   const serviceIds = [...new Set(bookings.map((b) => b.serviceId).filter(Boolean) as string[])]
   const masterIds = [...new Set(bookings.map((b) => b.masterId).filter(Boolean) as string[])]
-  const [services, masters] = await Promise.all([
+  const [services, masters, catalogItems] = await Promise.all([
     prisma.service.findMany({
       where: { id: { in: serviceIds } },
       select: { id: true, name: true, durationMin: true },
@@ -261,18 +364,46 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
       where: { id: { in: masterIds } },
       select: { id: true, name: true },
     }),
+    prisma.catalogItem.findMany({
+      where: { serviceId: { in: serviceIds } },
+      select: { serviceId: true, titleRu: true, sortOrder: true },
+      orderBy: { sortOrder: "asc" },
+    }),
   ])
   const serviceById = Object.fromEntries(
-    services.map((s) => [s.id, { name: s.name, durationMin: s.durationMin }])
+    services.map((s) => [
+      s.id,
+      {
+        name: s.name,
+        displayName: getServiceDisplayName(s.name),
+        durationMin: s.durationMin,
+      },
+    ])
   )
+  const zoneByServiceId: Record<string, string> = {}
+  for (const item of catalogItems) {
+    if (item.serviceId && !(item.serviceId in zoneByServiceId)) {
+      zoneByServiceId[item.serviceId] = item.titleRu
+    }
+  }
   const masterByName = Object.fromEntries(masters.map((m) => [m.id, m.name]))
-  return bookings.map((b) => ({
-    id: b.id,
-    status: b.status,
-    scheduledAt: b.scheduledAt,
-    service: b.serviceId
-      ? serviceById[b.serviceId] ?? { name: "—", durationMin: undefined }
-      : { name: "—", durationMin: undefined },
-    masterName: b.masterId ? masterByName[b.masterId] ?? "—" : "—",
-  }))
+  return bookings.map((b) => {
+    const svc = b.serviceId ? serviceById[b.serviceId] : null
+    const zone = b.serviceId ? zoneByServiceId[b.serviceId] : undefined
+    return {
+      id: b.id,
+      status: b.status,
+      scheduledAt: b.scheduledAt,
+      serviceId: b.serviceId ?? undefined,
+      service: svc
+        ? {
+            name: svc.name,
+            displayName: svc.displayName,
+            zone: zone ?? undefined,
+            durationMin: svc.durationMin,
+          }
+        : { name: "—", displayName: "—", durationMin: undefined as number | undefined },
+      masterName: b.masterId ? masterByName[b.masterId] ?? "—" : "—",
+    }
+  })
 }

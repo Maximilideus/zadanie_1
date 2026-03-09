@@ -80,7 +80,13 @@ export interface UpcomingBookingItem {
   id: string
   status: string
   scheduledAt: string
-  service: { name: string; durationMin?: number }
+  serviceId?: string
+  service: {
+    name: string
+    displayName?: string
+    zone?: string
+    durationMin?: number
+  }
   masterName: string
 }
 
@@ -342,4 +348,34 @@ export async function cancelBookingById(
   })
   if (!res.ok) return parseError(res)
   return (await res.json()) as BookingUpdateResponse
+}
+
+export interface RescheduleBookingResponse {
+  id: string
+  userId: string
+  serviceId: string | null
+  masterId: string | null
+  locationId: string | null
+  status: string
+  scheduledAt: string | null
+  createdAt: string
+  updatedAt: string
+  confirmedAt: string | null
+  cancelledAt: string | null
+  completedAt: string | null
+}
+
+export async function rescheduleBooking(
+  telegramId: string,
+  bookingId: string,
+  masterId: string,
+  scheduledAt: string,
+): Promise<RescheduleBookingResponse> {
+  const res = await fetch(`${BACKEND_URL}/telegram/bookings/reschedule`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telegramId, bookingId, masterId, scheduledAt }),
+  })
+  if (!res.ok) return parseError(res)
+  return (await res.json()) as RescheduleBookingResponse
 }

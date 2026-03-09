@@ -1,4 +1,5 @@
 import { sendTelegramMessage } from "./telegramSender"
+import { formatBookingCardFromParts } from "./bookingCard"
 import { SALON_TIMEZONE } from "../config/salon"
 
 interface BookingNotificationData {
@@ -7,34 +8,34 @@ interface BookingNotificationData {
   serviceName: string | null
   masterName: string | null
   scheduledAt: Date | null
-}
-
-function formatDate(d: Date): string {
-  return d.toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: SALON_TIMEZONE,
-  })
-}
-
-function formatTime(d: Date): string {
-  return d.toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: SALON_TIMEZONE,
-  })
+  durationMin?: number | null
+  zone?: string | null
 }
 
 function buildDetailsBlock(data: BookingNotificationData): string {
-  const lines: string[] = []
-  if (data.serviceName) lines.push(`📋 Услуга: ${data.serviceName}`)
-  if (data.masterName) lines.push(`👤 Мастер: ${data.masterName}`)
-  if (data.scheduledAt) {
-    lines.push(`📅 Дата: ${formatDate(data.scheduledAt)}`)
-    lines.push(`⏰ Время: ${formatTime(data.scheduledAt)}`)
+  if (!data.serviceName || !data.masterName || !data.scheduledAt) {
+    const parts: string[] = []
+    if (data.serviceName) parts.push(`📋 Услуга: ${data.serviceName}`)
+    if (data.masterName) parts.push(`👩‍⚕️ Мастер: ${data.masterName}`)
+    if (data.scheduledAt) {
+      const d = data.scheduledAt
+      const date = d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: SALON_TIMEZONE })
+      const time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: SALON_TIMEZONE })
+      parts.push(`📅 Дата: ${date}`, `⏰ Время: ${time}`)
+    }
+    return parts.join("\n")
   }
-  return lines.join("\n")
+  const d = data.scheduledAt
+  const date = d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: SALON_TIMEZONE })
+  const time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: SALON_TIMEZONE })
+  return formatBookingCardFromParts({
+    serviceName: data.serviceName,
+    zone: data.zone ?? undefined,
+    durationMin: data.durationMin ?? undefined,
+    masterName: data.masterName,
+    date,
+    time,
+  })
 }
 
 function buildMessage(data: BookingNotificationData): string | null {

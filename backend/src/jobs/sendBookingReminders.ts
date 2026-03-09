@@ -1,6 +1,8 @@
 import { prisma } from "../lib/prisma"
 import { SALON_TIMEZONE } from "../config/salon"
 import { sendTelegramMessage, type InlineButton } from "../services/telegramSender"
+import { formatBookingCardFromBooking } from "../services/bookingCard"
+import { getServiceDisplayName } from "../services/serviceDisplayName"
 import { env } from "../config/env"
 
 const INTERVAL_MS =
@@ -39,30 +41,13 @@ function fmtSalon(d: Date): string {
   })
 }
 
-function fmtDate(d: Date): string {
-  return d.toLocaleDateString("ru-RU", {
-    timeZone: SALON_TIMEZONE,
-    day: "numeric",
-    month: "long",
-  })
-}
-
-function fmtTime(d: Date): string {
-  return d.toLocaleTimeString("ru-RU", {
-    timeZone: SALON_TIMEZONE,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-}
-
 const STATUS_LABELS: Record<string, string> = {
   PENDING: "ожидает подтверждения",
   CONFIRMED: "подтверждена",
 }
 
-async function loadServiceAndMaster(serviceId: string, masterId: string) {
-  const [service, master] = await Promise.all([
+async function loadServiceMasterAndZone(serviceId: string, masterId: string) {
+  const [service, master, catalogItem] = await Promise.all([
     prisma.service.findUnique({
       where: { id: serviceId },
       select: { name: true, durationMin: true },
@@ -71,10 +56,17 @@ async function loadServiceAndMaster(serviceId: string, masterId: string) {
       where: { id: masterId },
       select: { name: true },
     }),
+    prisma.catalogItem.findFirst({
+      where: { serviceId },
+      select: { titleRu: true },
+      orderBy: { sortOrder: "asc" },
+    }),
   ])
   return {
-    serviceName: service?.name ?? "—",
+    serviceName: service?.name ? getServiceDisplayName(service.name) : "—",
     masterName: master?.name ?? "—",
+    durationMin: service?.durationMin ?? undefined,
+    zone: catalogItem?.titleRu ?? undefined,
   }
 }
 
@@ -85,16 +77,10 @@ function buildReminderText(
   scheduledAt: Date,
   status: string,
   outro: string,
+  options?: { durationMin?: number; zone?: string },
 ): string {
-  const lines = [
-    intro,
-    "",
-    `Услуга: ${serviceName}`,
-    `Мастер: ${masterName}`,
-    `Дата: ${fmtDate(scheduledAt)}`,
-    `Время: ${fmtTime(scheduledAt)}`,
-    `Статус: ${STATUS_LABELS[status] ?? status}`,
-  ]
+  const card = formatBookingCardFromBooking(serviceName, masterName, scheduledAt, options)
+  const lines = [intro, "", card, `Статус: ${STATUS_LABELS[status] ?? status}`]
   if (outro) {
     lines.push("", outro)
   }
@@ -169,7 +155,7 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
         already2h: !!booking.reminder2hSentAt,
       }, "Evaluating booking")
 
-      const { serviceName, masterName } = await loadServiceAndMaster(
+      const { serviceName, masterName, durationMin, zone } = await loadServiceMasterAndZone(
         booking.serviceId,
         booking.masterId,
       )
@@ -192,6 +178,7 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
           scheduledAt,
           booking.status,
           "Ждём вас.",
+          { durationMin, zone },
         )
 
         const ok = await sendTelegramMessage({ chat_id: telegramId, text })
@@ -234,6 +221,7 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
           scheduledAt,
           booking.status,
           outro,
+          { durationMin, zone },
         )
 
         const ok = await sendTelegramMessage({
