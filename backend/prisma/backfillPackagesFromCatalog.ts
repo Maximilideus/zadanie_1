@@ -4,11 +4,17 @@
  * Source: CatalogItem (type = PACKAGE), CatalogItemPackage, CatalogItem.serviceId
  * Target: Package, PackageService
  *
- * After creating relations, recalculates and persists Package.price and Package.durationMin
- * from the sum of linked Service prices and durations.
+ * After creating/updating relations, recalculates and persists:
+ *   Package.price = sum(Service.price)
+ *   Package.durationMin = sum(Service.durationMin)
  *
- * Run: npm run backfill-packages (or ts-node prisma/backfillPackagesFromCatalog.ts)
- * Safe to run; re-running may create duplicate Package rows (no deduplication by legacy id).
+ * Idempotent: re-run safe. Uses locationId + name to find existing Package (no duplicate rows).
+ * PackageService uses upsert on (packageId, serviceId).
+ *
+ * Run: npm run backfill-packages
+ * Or:  ts-node prisma/backfillPackagesFromCatalog.ts
+ *
+ * Does NOT: delete or modify CatalogItem / CatalogItemPackage, change read paths, or touch booking/AvailabilityService.
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -36,27 +42,55 @@ async function main() {
   }
 
   let packagesCreated = 0;
+  let packagesUpdated = 0;
   let relationsCreated = 0;
+  let relationsUpdated = 0;
   const skippedChildren: { catalogItemTitle: string; packageTitle: string; reason: string }[] = [];
 
   for (const catItem of legacyPackages) {
-    const name = catItem.titleRu || "Unnamed package";
+    const name = catItem.titleRu?.trim() || "Unnamed package";
+    const locationId = catItem.locationId;
     const category = catItem.category;
 
-    const pkg = await prisma.package.create({
-      data: {
-        locationId: catItem.locationId,
-        name,
-        category: category,
-        description: catItem.descriptionRu ?? null,
-        price: 0,
-        durationMin: 0,
-        isVisible: catItem.isVisible,
-        isBookable: true,
-        sortOrder: catItem.sortOrder,
-      },
+    const payload = {
+      locationId,
+      name,
+      category,
+      gender: catItem.gender ?? null,
+      description: catItem.descriptionRu?.trim() || null,
+      isVisible: catItem.isVisible,
+      isBookable: true,
+      sortOrder: catItem.sortOrder,
+      price: 0,
+      durationMin: 0,
+    };
+
+    const existing = await prisma.package.findFirst({
+      where: { locationId, name },
+      select: { id: true },
     });
-    packagesCreated += 1;
+
+    let pkgId: string;
+    if (existing) {
+      await prisma.package.update({
+        where: { id: existing.id },
+        data: {
+          category: payload.category,
+          gender: payload.gender,
+          description: payload.description,
+          isVisible: payload.isVisible,
+          sortOrder: payload.sortOrder,
+        },
+      });
+      pkgId = existing.id;
+      packagesUpdated += 1;
+    } else {
+      const pkg = await prisma.package.create({
+        data: payload,
+      });
+      pkgId = pkg.id;
+      packagesCreated += 1;
+    }
 
     for (const link of catItem.packageItemsAsPackage) {
       const child = link.item;
@@ -82,22 +116,30 @@ async function main() {
         continue;
       }
 
+      const existed = await prisma.packageService.findUnique({
+        where: {
+          packageId_serviceId: { packageId: pkgId, serviceId: child.serviceId },
+        },
+        select: { id: true },
+      });
+
       await prisma.packageService.upsert({
         where: {
-          packageId_serviceId: { packageId: pkg.id, serviceId: child.serviceId },
+          packageId_serviceId: { packageId: pkgId, serviceId: child.serviceId },
         },
         create: {
-          packageId: pkg.id,
+          packageId: pkgId,
           serviceId: child.serviceId,
           sortOrder: link.sortOrder,
         },
         update: { sortOrder: link.sortOrder },
       });
-      relationsCreated += 1;
+
+      if (existed) relationsUpdated += 1;
+      else relationsCreated += 1;
     }
   }
 
-  // Recalculate and persist Package.price and Package.durationMin from linked services
   const allPackages = await prisma.package.findMany({
     include: {
       services: {
@@ -117,17 +159,19 @@ async function main() {
   }
 
   console.log("[backfill-packages] Summary:");
-  console.log(`  Legacy packages processed: ${legacyPackages.length}`);
-  console.log(`  Package rows created:       ${packagesCreated}`);
-  console.log(`  PackageService relations:  ${relationsCreated}`);
-  console.log(`  Skipped children (no/invalid serviceId): ${skippedChildren.length}`);
+  console.log(`  Legacy package CatalogItems found: ${legacyPackages.length}`);
+  console.log(`  Package rows created:              ${packagesCreated}`);
+  console.log(`  Package rows updated (existing): ${packagesUpdated}`);
+  console.log(`  PackageService rows created:      ${relationsCreated}`);
+  console.log(`  PackageService rows updated:      ${relationsUpdated}`);
+  console.log(`  Child items skipped:               ${skippedChildren.length}`);
   if (skippedChildren.length > 0) {
     console.log("  Skipped details:");
     skippedChildren.forEach((s) =>
       console.log(`    - "${s.catalogItemTitle}" in "${s.packageTitle}": ${s.reason}`)
     );
   }
-  console.log("[backfill-packages] Package price and durationMin updated from sum of linked services.");
+  console.log("[backfill-packages] Package.price and Package.durationMin recalculated from sum of linked Service values.");
 }
 
 main()

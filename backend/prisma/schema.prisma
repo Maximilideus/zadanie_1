@@ -74,10 +74,15 @@ model Service {
   price       Int
 
   category    CatalogCategory?
+  gender      CatalogGender?
+  groupKey    String?
   description String?
   isVisible   Boolean @default(true)
   isBookable  Boolean @default(true)
   sortOrder   Int     @default(0)
+
+  /// Migration linkage: set when Service was created from CatalogItem. Used for idempotent backfill only.
+  sourceCatalogItemId String? @unique
 
   locationId String
   location   Location @relation(fields: [locationId], references: [id])
@@ -93,6 +98,7 @@ model Service {
   updatedAt DateTime @updatedAt
 
   @@index([locationId])
+  @@index([sourceCatalogItemId])
 }
 
 model MasterService {
@@ -117,10 +123,16 @@ model Package {
   durationMin Int @default(0)
 
   category    CatalogCategory?
+  gender      CatalogGender?
   description String?
   isVisible   Boolean @default(true)
   isBookable  Boolean @default(true)
   sortOrder   Int     @default(0)
+
+  /// Link to legacy CatalogItem (type PACKAGE). Null = legacy package (do not modify).
+  sourceLegacyPackageId String?
+  /// Variant key for normalized packages: "female" | "male" | "unisex" | null (single variant). Unique with sourceLegacyPackageId.
+  normalizedVariantKey  String?
 
   locationId String
   location   Location @relation(fields: [locationId], references: [id])
@@ -133,7 +145,9 @@ model Package {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([sourceLegacyPackageId, normalizedVariantKey])
   @@index([locationId])
+  @@index([sourceLegacyPackageId])
 }
 
 model PackageService {
@@ -171,6 +185,7 @@ model Subscription {
   id    String @id @default(uuid())
   name  String
   category CatalogCategory
+  gender   CatalogGender?
   description String?
   baseServiceId String?
   basePackageId  String?

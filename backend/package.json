@@ -12,7 +12,16 @@
     "add-massage-catalog": "ts-node prisma/addMassageCatalogItems.ts",
     "reminders:run": "ts-node -e \"require('./src/jobs/sendBookingReminders').runBookingRemindersOnce().then(() => process.exit(0))\"",
     "check-catalog": "ts-node prisma/checkCatalogIntegrity.ts",
-    "backfill-packages": "ts-node prisma/backfillPackagesFromCatalog.ts"
+    "backfill-packages": "ts-node prisma/backfillPackagesFromCatalog.ts",
+    "backfill-catalogitem-services:dry-run": "ts-node scripts/backfill-catalogitem-services.ts dry-run",
+    "backfill-catalogitem-services:apply": "ts-node scripts/backfill-catalogitem-services.ts apply",
+    "backfill-catalogitem-services:verify": "ts-node scripts/backfill-catalogitem-services.ts verify",
+    "rebuild-package-services:dry-run": "ts-node scripts/rebuild-package-services.ts dry-run",
+    "rebuild-package-services:apply": "ts-node scripts/rebuild-package-services.ts apply",
+    "rebuild-package-services:verify": "ts-node scripts/rebuild-package-services.ts verify",
+    "create-normalized-packages:dry-run": "ts-node scripts/create-normalized-packages.ts dry-run",
+    "create-normalized-packages:apply": "ts-node scripts/create-normalized-packages.ts apply",
+    "create-normalized-packages:verify": "ts-node scripts/create-normalized-packages.ts verify"
   },
   "keywords": [],
   "author": "",
