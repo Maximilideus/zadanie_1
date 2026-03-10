@@ -37,7 +37,18 @@ export async function getCatalogByCategory(
 }
 
 export async function getCatalogItemById(id: string) {
-  return findCatalogItemById(id)
+  const raw = await findCatalogItemById(id)
+  if (!raw) return null
+
+  let price = raw.price ?? null
+  let durationMin = raw.durationMin ?? null
+  if (raw.type === "PACKAGE" && raw.packageItemsAsPackage?.length) {
+    price = raw.packageItemsAsPackage.reduce((s, p) => s + (p.item.price ?? 0), 0)
+    durationMin = raw.packageItemsAsPackage.reduce((s, p) => s + (p.item.durationMin ?? 0), 0)
+  }
+
+  const { packageItemsAsPackage: _, ...rest } = raw
+  return { ...rest, price, durationMin }
 }
 
 export async function getCatalogByCategoryGrouped(

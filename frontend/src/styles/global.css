@@ -1676,6 +1676,20 @@ input[type="date"]:hover {
   border-bottom: none;
 }
 
+/* Catalog table: fixed layout, no horizontal scroll, text wrap */
+.admin-catalog-table-wrap {
+  overflow-x: visible;
+}
+.admin-catalog-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.admin-catalog-table th,
+.admin-catalog-table td {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
 /* ─── Status badges (semantic colors) ───────────────────────── */
 .admin-status-badge {
   display: inline-block;

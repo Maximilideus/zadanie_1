@@ -49,6 +49,7 @@ const catalogPatchBody = z.object({
   durationMin: z.number().int().min(1, "durationMin > 0").nullable().optional(),
   isVisible: z.boolean().optional(),
   sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+  packageItemIds: z.array(z.string().uuid()).optional(),
 })
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -523,7 +524,7 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get("/catalog", {
     preHandler: adminPreHandlers,
   }, async () => {
-    const items = await prisma.catalogItem.findMany({
+    const rows = await prisma.catalogItem.findMany({
       orderBy: [{ sortOrder: "asc" }, { titleRu: "asc" }],
       select: {
         id: true,
@@ -540,7 +541,30 @@ export async function adminRoutes(app: FastifyInstance) {
         isVisible: true,
         sortOrder: true,
         serviceId: true,
+        packageItemsAsPackage: {
+          orderBy: { sortOrder: "asc" },
+          select: {
+            itemId: true,
+            sortOrder: true,
+            item: { select: { id: true, titleRu: true, price: true, durationMin: true } },
+          },
+        },
       },
+    })
+    const items = rows.map((row) => {
+      let price = row.price ?? null
+      let durationMin = row.durationMin ?? null
+      if (row.type === "PACKAGE" && row.packageItemsAsPackage?.length) {
+        price = row.packageItemsAsPackage.reduce((s, p) => s + (p.item.price ?? 0), 0)
+        durationMin = row.packageItemsAsPackage.reduce((s, p) => s + (p.item.durationMin ?? 0), 0)
+      }
+      const packageItems = row.packageItemsAsPackage?.map((p) => ({
+        itemId: p.itemId,
+        sortOrder: p.sortOrder,
+        titleRu: p.item.titleRu,
+      })) ?? []
+      const { packageItemsAsPackage: _, ...rest } = row
+      return { ...rest, price, durationMin, packageItems }
     })
     return { items }
   })
@@ -561,7 +585,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const existing = await prisma.catalogItem.findUnique({
       where: { id },
-      select: { id: true, serviceId: true, durationMin: true, price: true },
+      select: { id: true, type: true, serviceId: true, durationMin: true, price: true },
     })
     if (!existing) {
       return reply.status(404).send({
@@ -572,12 +596,26 @@ export async function adminRoutes(app: FastifyInstance) {
     }
 
     const data: Record<string, unknown> = { ...body.data }
+    const packageItemIds = body.data.packageItemIds
 
-    // Keep subtitleRu in sync with durationMin for duration-based items
-    if (data.durationMin !== undefined) {
-      const newDur = data.durationMin as number | null
-      if (newDur != null) {
-        data.subtitleRu = `${newDur} мин`
+    if (existing.type === "PACKAGE") {
+      delete data.price
+      delete data.durationMin
+      if (packageItemIds !== undefined) {
+        await prisma.catalogItemPackage.deleteMany({ where: { packageId: id } })
+        for (let i = 0; i < packageItemIds.length; i++) {
+          await prisma.catalogItemPackage.create({
+            data: { packageId: id, itemId: packageItemIds[i], sortOrder: i },
+          })
+        }
+      }
+    } else {
+      // Keep subtitleRu in sync with durationMin for non-package items
+      if (data.durationMin !== undefined) {
+        const newDur = data.durationMin as number | null
+        if (newDur != null) {
+          data.subtitleRu = `${newDur} мин`
+        }
       }
     }
 
@@ -599,11 +637,15 @@ export async function adminRoutes(app: FastifyInstance) {
         isVisible: true,
         sortOrder: true,
         serviceId: true,
+        packageItemsAsPackage: {
+          orderBy: { sortOrder: "asc" },
+          select: { itemId: true, sortOrder: true, item: { select: { id: true, titleRu: true, price: true, durationMin: true } } },
+        },
       },
     })
 
-    // Sync linked Service so booking/availability stays consistent
-    if (existing.serviceId && (data.durationMin !== undefined || data.price !== undefined)) {
+    // Sync linked Service so booking/availability stays consistent (not for PACKAGE)
+    if (existing.type !== "PACKAGE" && existing.serviceId && (data.durationMin !== undefined || data.price !== undefined)) {
       const serviceData: Record<string, unknown> = {}
       const finalDur = data.durationMin !== undefined ? data.durationMin : existing.durationMin
       const finalPrice = data.price !== undefined ? data.price : existing.price
@@ -620,6 +662,25 @@ export async function adminRoutes(app: FastifyInstance) {
       }
     }
 
-    return { item: updated }
+    let price = updated.price ?? null
+    let durationMin = updated.durationMin ?? null
+    if (updated.type === "PACKAGE" && updated.packageItemsAsPackage?.length) {
+      price = updated.packageItemsAsPackage.reduce((s, p) => s + (p.item.price ?? 0), 0)
+      durationMin = updated.packageItemsAsPackage.reduce((s, p) => s + (p.item.durationMin ?? 0), 0)
+    }
+    const packageItems = updated.packageItemsAsPackage?.map((p) => ({
+      itemId: p.itemId,
+      sortOrder: p.sortOrder,
+      titleRu: p.item.titleRu,
+    })) ?? []
+    const { packageItemsAsPackage: _p, ...rest } = updated
+    return {
+      item: {
+        ...rest,
+        price,
+        durationMin,
+        packageItems,
+      },
+    }
   })
 }

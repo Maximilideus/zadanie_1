@@ -24,6 +24,7 @@ const TYPE_LABELS = {
   ZONE: "Зона",
   OFFER: "Предложение",
   INFO: "Инфо",
+  PACKAGE: "Комплекс",
 };
 
 const CATEGORIES = ["", "LASER", "WAX", "ELECTRO", "MASSAGE"];
@@ -67,6 +68,17 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
     return (a.titleRu || "").localeCompare(b.titleRu || "", "ru");
   });
 
+  const zonesForPackage = (category) =>
+    items.filter((i) => i.category === category && i.type === "ZONE");
+
+  const togglePackageZone = (itemId) => {
+    const ids = editDraft.packageItemIds ?? [];
+    const next = ids.includes(itemId)
+      ? ids.filter((id) => id !== itemId)
+      : [...ids, itemId];
+    setEditDraft((prev) => ({ ...prev, packageItemIds: next }));
+  };
+
   const startEdit = (item) => {
     setEditingId(item.id);
     setEditDraft({
@@ -77,6 +89,9 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
       durationMin: item.durationMin ?? "",
       isVisible: item.isVisible,
       sortOrder: item.sortOrder,
+      type: item.type,
+      category: item.category,
+      packageItemIds: (item.packageItems ?? []).map((p) => p.itemId),
     });
     setSaveError("");
   };
@@ -108,21 +123,26 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
     fields.descriptionRu = editDraft.descriptionRu.trim() || null;
     fields.sessionsNoteRu = editDraft.sessionsNoteRu.trim() || null;
 
-    const priceVal = editDraft.price === "" ? null : Number(editDraft.price);
-    if (priceVal !== null && (isNaN(priceVal) || priceVal < 0)) {
-      setSaveError("Цена не может быть отрицательной");
-      setSaving(false);
-      return;
-    }
-    fields.price = priceVal;
+    const isPackage = editDraft.type === "PACKAGE";
+    if (!isPackage) {
+      const priceVal = editDraft.price === "" ? null : Number(editDraft.price);
+      if (priceVal !== null && (isNaN(priceVal) || priceVal < 0)) {
+        setSaveError("Цена не может быть отрицательной");
+        setSaving(false);
+        return;
+      }
+      fields.price = priceVal;
 
-    const durVal = editDraft.durationMin === "" ? null : Number(editDraft.durationMin);
-    if (durVal !== null && (isNaN(durVal) || durVal < 1)) {
-      setSaveError("Длительность должна быть не меньше 1 минуты");
-      setSaving(false);
-      return;
+      const durVal = editDraft.durationMin === "" ? null : Number(editDraft.durationMin);
+      if (durVal !== null && (isNaN(durVal) || durVal < 1)) {
+        setSaveError("Длительность должна быть не меньше 1 минуты");
+        setSaving(false);
+        return;
+      }
+      fields.durationMin = durVal;
+    } else {
+      fields.packageItemIds = editDraft.packageItemIds ?? [];
     }
-    fields.durationMin = durVal;
 
     const sortVal = Number(editDraft.sortOrder);
     if (isNaN(sortVal) || sortVal < 0) {
@@ -213,8 +233,8 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
           ) : (
             <>
               <div style={s.count}>Позиций: {sorted.length}</div>
-              <div className="admin-table-wrap">
-                <table className="admin-table">
+              <div className="admin-table-wrap admin-catalog-table-wrap" style={s.tableWrap}>
+                <table className="admin-table admin-catalog-table" style={s.table}>
                   <thead>
                     <tr>
                       <th style={s.th}>Категория</th>
@@ -236,7 +256,8 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
 
                       if (isEditing) {
                         return (
-                          <tr key={item.id} style={s.trEditing}>
+                          <React.Fragment key={item.id}>
+                          <tr style={s.trEditing}>
                             <td style={s.td}>
                               <span style={{ ...s.badge, background: CATEGORY_COLORS[item.category] || "#888" }}>
                                 {CATEGORY_LABELS[item.category] || item.category}
@@ -269,22 +290,34 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                               />
                             </td>
                             <td style={s.td}>
-                              <input
-                                style={{ ...s.editInput, width: "70px" }}
-                                type="number"
-                                min="0"
-                                value={editDraft.price}
-                                onChange={(e) => handleDraftChange("price", e.target.value)}
-                              />
+                              {editDraft.type === "PACKAGE" ? (
+                                <span style={s.subText}>
+                                  {item.price != null ? `${item.price} ₽` : "—"}
+                                </span>
+                              ) : (
+                                <input
+                                  style={{ ...s.editInput, width: "70px" }}
+                                  type="number"
+                                  min="0"
+                                  value={editDraft.price}
+                                  onChange={(e) => handleDraftChange("price", e.target.value)}
+                                />
+                              )}
                             </td>
                             <td style={s.td}>
-                              <input
-                                style={{ ...s.editInput, width: "60px" }}
-                                type="number"
-                                min="1"
-                                value={editDraft.durationMin}
-                                onChange={(e) => handleDraftChange("durationMin", e.target.value)}
-                              />
+                              {editDraft.type === "PACKAGE" ? (
+                                <span style={s.subText}>
+                                  {item.durationMin != null ? `${item.durationMin} мин` : "—"}
+                                </span>
+                              ) : (
+                                <input
+                                  style={{ ...s.editInput, width: "60px" }}
+                                  type="number"
+                                  min="1"
+                                  value={editDraft.durationMin}
+                                  onChange={(e) => handleDraftChange("durationMin", e.target.value)}
+                                />
+                              )}
                             </td>
                             <td style={s.td}>
                               <input
@@ -326,6 +359,27 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                               {saveError && <div style={s.saveError}>{saveError}</div>}
                             </td>
                           </tr>
+                          {editDraft.type === "PACKAGE" && (
+                            <tr style={s.trEditing}>
+                              <td colSpan={11} style={s.td}>
+                                <div style={s.packageZones}>
+                                  <span style={s.packageZonesLabel}>Зоны в комплексе:</span>
+                                  {zonesForPackage(editDraft.category).map((zone) => (
+                                    <label key={zone.id} style={s.checkboxLabel}>
+                                      <input
+                                        type="checkbox"
+                                        checked={(editDraft.packageItemIds ?? []).includes(zone.id)}
+                                        onChange={() => togglePackageZone(zone.id)}
+                                        style={s.checkbox}
+                                      />
+                                      {zone.titleRu}
+                                    </label>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
                         );
                       }
 
@@ -392,6 +446,14 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
 const s = {
   wrapper: { minHeight: "100vh" },
   container: {},
+  tableWrap: {
+    overflowX: "visible",
+    width: "100%",
+  },
+  table: {
+    tableLayout: "fixed",
+    width: "100%",
+  },
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
     marginBottom: "24px",
@@ -421,11 +483,15 @@ const s = {
   content: { padding: "24px", marginBottom: "24px" },
   msg: { color: "#6b7280", fontSize: "15px", textAlign: "center", padding: "32px 0" },
   count: { fontSize: "13px", color: "#6b7280", marginBottom: "12px" },
-  th: {},
+  th: { wordWrap: "break-word", overflowWrap: "break-word" },
   tr: { borderBottom: "1px solid #f3f4f6" },
   trEditing: { background: "#f9fafb" },
-  td: {},
+  td: { wordWrap: "break-word", overflowWrap: "break-word" },
   sub: { display: "block", fontSize: "12px", color: "#6b7280", marginTop: "2px" },
+  packageZones: { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "center", marginBottom: "8px" },
+  packageZonesLabel: { fontSize: "12px", fontWeight: 600, color: "#6b7280", marginRight: "4px" },
+  checkbox: { margin: 0 },
+  checkboxLabel: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" },
   subText: { fontSize: "13px", color: "#6b7280" },
   badge: {
     display: "inline-block", padding: "4px 10px", borderRadius: "12px",

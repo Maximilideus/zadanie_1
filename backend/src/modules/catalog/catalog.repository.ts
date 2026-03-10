@@ -1,6 +1,12 @@
 import { prisma } from "../../lib/prisma"
 import type { CatalogCategory } from "@prisma/client"
 
+const catalogItemPackageSelect = {
+  item: {
+    select: { price: true, durationMin: true },
+  },
+} as const
+
 export async function findCatalogItemById(id: string) {
   return prisma.catalogItem.findUnique({
     where: { id },
@@ -20,6 +26,10 @@ export async function findCatalogItemById(id: string) {
       isVisible: true,
       service: {
         select: { id: true, name: true, durationMin: true, price: true },
+      },
+      packageItemsAsPackage: {
+        select: catalogItemPackageSelect,
+        orderBy: { sortOrder: "asc" },
       },
     },
   })
@@ -62,6 +72,10 @@ export async function findCatalogItemsByLocationAndCategory(
       sessionsNoteRu: true,
       price: true,
       durationMin: true,
+      packageItemsAsPackage: {
+        select: catalogItemPackageSelect,
+        orderBy: { sortOrder: "asc" },
+      },
     },
   })
 }

@@ -53,6 +53,7 @@ type CatalogItemRecord = {
   sessionsNoteRu: string | null
   price: number | null
   durationMin: number | null
+  packageItemsAsPackage?: { item: { price: number | null; durationMin: number | null } }[]
 }
 
 export type CatalogItemDto = {
@@ -68,7 +69,22 @@ export type CatalogItemDto = {
   durationMin: number | null
 }
 
+/** For PACKAGE type: price and duration are derived from child items (not stored). */
 export function mapCatalogItemToDto(item: CatalogItemRecord): CatalogItemDto {
+  let price: number | null = item.price ?? null
+  let durationMin: number | null = item.durationMin ?? null
+
+  if (item.type === "PACKAGE" && item.packageItemsAsPackage?.length) {
+    price = item.packageItemsAsPackage.reduce(
+      (sum, p) => sum + (p.item.price ?? 0),
+      0,
+    )
+    durationMin = item.packageItemsAsPackage.reduce(
+      (sum, p) => sum + (p.item.durationMin ?? 0),
+      0,
+    )
+  }
+
   return {
     id: item.id,
     type: item.type,
@@ -78,8 +94,8 @@ export function mapCatalogItemToDto(item: CatalogItemRecord): CatalogItemDto {
     subtitle: item.subtitleRu,
     description: item.descriptionRu,
     sessionsNoteRu: item.sessionsNoteRu ?? null,
-    price: item.price ?? null,
-    durationMin: item.durationMin ?? null,
+    price,
+    durationMin,
   }
 }
 

@@ -271,4 +271,69 @@ export async function seedCatalogItems(prisma: PrismaClient) {
     `[seedCatalogItems] ${rows.length} items created, ` +
     `${linked} linked to services, ${infoOnly} info-only (no service needed)`
   )
+
+  // Phase 4: seed package items (complexes) — child zones resolved by titleRu
+  const zoneTitleToId = new Map<string, string>()
+  const catalogItems = await prisma.catalogItem.findMany({
+    where: { locationId: location.id, type: CatalogItemType.ZONE },
+    select: { id: true, category: true, titleRu: true },
+  })
+  for (const it of catalogItems) {
+    zoneTitleToId.set(`${it.category}:${it.titleRu}`, it.id)
+  }
+
+  const packageDefs: { category: CatalogCategory; titleRu: string; zoneTitles: string[] }[] = [
+    { category: CatalogCategory.LASER, titleRu: "Подмышки + Голени", zoneTitles: ["Подмышки", "Голени"] },
+    { category: CatalogCategory.LASER, titleRu: "Подмышки + Бикини", zoneTitles: ["Подмышки", "Бикини классическое"] },
+    { category: CatalogCategory.LASER, titleRu: "Бикини + Голени", zoneTitles: ["Бикини классическое", "Голени"] },
+    { category: CatalogCategory.LASER, titleRu: "Подмышки + Бикини + Голени", zoneTitles: ["Подмышки", "Бикини классическое", "Голени"] },
+    { category: CatalogCategory.WAX, titleRu: "Подмышки + Голени", zoneTitles: ["Подмышки", "Голени"] },
+    { category: CatalogCategory.WAX, titleRu: "Бикини + Голени", zoneTitles: ["Бикини классическое", "Голени"] },
+  ]
+
+  const maxOrder = await prisma.catalogItem
+    .aggregate({ where: { locationId: location.id }, _max: { sortOrder: true } })
+    .then((r) => r._max.sortOrder ?? 0)
+
+  let packageSortOrder = maxOrder
+  for (const def of packageDefs) {
+    const itemIds: string[] = []
+    for (const title of def.zoneTitles) {
+      const id = zoneTitleToId.get(`${def.category}:${title}`)
+      if (!id) {
+        console.warn(`[seedCatalogItems] Package "${def.titleRu}": zone "${title}" not found in category ${def.category}, skipping package.`)
+        break
+      }
+      itemIds.push(id)
+    }
+    if (itemIds.length !== def.zoneTitles.length) continue
+
+    const pkg = await prisma.catalogItem.create({
+      data: {
+        locationId: location.id,
+        category: def.category,
+        type: CatalogItemType.PACKAGE,
+        gender: null,
+        groupKey: null,
+        titleRu: def.titleRu,
+        subtitleRu: null,
+        descriptionRu: null,
+        sessionsNoteRu: null,
+        price: null,
+        durationMin: null,
+        serviceId: null,
+        isVisible: true,
+        sortOrder: ++packageSortOrder,
+      },
+    })
+    await prisma.catalogItemPackage.createMany({
+      data: itemIds.map((itemId, i) => ({
+        packageId: pkg.id,
+        itemId,
+        sortOrder: i,
+      })),
+    })
+  }
+
+  console.log(`[seedCatalogItems] Package complexes seeded for Laser and Wax.`)
 }
