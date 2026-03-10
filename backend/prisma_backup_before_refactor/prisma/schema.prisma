@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 // Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/prisma-accelerate-init
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
   provider = "prisma-client-js"
@@ -20,14 +20,13 @@ model Location {
   address  String
   timezone String
 
-  users          User[]
-  services       Service[]
-  packages       Package[]
-  subscriptions  Subscription[]
-  workingHours   WorkingHour[]
-  appointments   Appointment[]
-  exceptions     Exception[]   @relation("LocationExceptions")
-  catalogItems   CatalogItem[]
+  users        User[]
+  services     Service[]
+  packages     Package[]
+  workingHours WorkingHour[]
+  appointments Appointment[]
+  exceptions   Exception[]   @relation("LocationExceptions")
+  catalogItems CatalogItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -55,7 +54,6 @@ model User {
   clientAppointments Appointment[]   @relation("ClientAppointments")
   masterAppointments Appointment[]   @relation("MasterAppointments")
   masterServices     MasterService[]
-  masterPackages     MasterPackage[]
   workingHours       WorkingHour[]   @relation("MasterWorkingHours")
 
   exceptions Exception[] @relation("UserExceptions")
@@ -68,16 +66,10 @@ model User {
 }
 
 model Service {
-  id          String  @id @default(uuid())
+  id          String @id @default(uuid())
   name        String
   durationMin Int
   price       Int
-
-  category    CatalogCategory?
-  description String?
-  isVisible   Boolean @default(true)
-  isBookable  Boolean @default(true)
-  sortOrder   Int     @default(0)
 
   locationId String
   location   Location @relation(fields: [locationId], references: [id])
@@ -86,8 +78,6 @@ model Service {
   appointmentLinks AppointmentService[]
   masterLinks      MasterService[]
   catalogItems     CatalogItem[]
-  subscriptionsAsBase Subscription[] @relation("SubscriptionBaseService")
-  bookings         Booking[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -113,22 +103,12 @@ model MasterService {
 model Package {
   id    String @id @default(uuid())
   name  String
-  price Int     @default(0)
-  durationMin Int @default(0)
-
-  category    CatalogCategory?
-  description String?
-  isVisible   Boolean @default(true)
-  isBookable  Boolean @default(true)
-  sortOrder   Int     @default(0)
+  price Int
 
   locationId String
   location   Location @relation(fields: [locationId], references: [id])
 
-  services       PackageService[]
-  masterPackages MasterPackage[]
-  subscriptionsAsBase Subscription[] @relation("SubscriptionBasePackage")
-  bookings       Booking[]
+  services PackageService[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -137,61 +117,15 @@ model Package {
 }
 
 model PackageService {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
+
   packageId String
   serviceId String
-  sortOrder Int      @default(0)
 
-  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
+  package Package @relation(fields: [packageId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
 
   @@unique([packageId, serviceId])
-  @@index([packageId])
-  @@index([serviceId])
-}
-
-model MasterPackage {
-  id        String   @id @default(uuid())
-  masterId  String
-  packageId String
-
-  master  User    @relation(fields: [masterId], references: [id], onDelete: Cascade)
-  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-
-  @@unique([masterId, packageId])
-  @@index([masterId])
-  @@index([packageId])
-}
-
-model Subscription {
-  id    String @id @default(uuid())
-  name  String
-  category CatalogCategory
-  description String?
-  baseServiceId String?
-  basePackageId  String?
-  quantity      Int     @default(1)
-  discountPercent Int   @default(0)
-  finalPrice    Int     @default(0)
-  isVisible    Boolean @default(true)
-  sortOrder     Int     @default(0)
-
-  locationId String
-  location   Location @relation(fields: [locationId], references: [id])
-
-  baseService Service? @relation("SubscriptionBaseService", fields: [baseServiceId], references: [id])
-  basePackage Package? @relation("SubscriptionBasePackage", fields: [basePackageId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([locationId])
-  @@index([baseServiceId])
-  @@index([basePackageId])
 }
 
 model Appointment {
@@ -302,7 +236,6 @@ model Booking {
   userId      String
   user        User          @relation(fields: [userId], references: [id])
   serviceId   String?
-  packageId   String?
   masterId    String?
   locationId  String?
   scheduledAt DateTime?
@@ -317,15 +250,10 @@ model Booking {
   reminder10hSentAt DateTime?
   reminder2hSentAt  DateTime?
 
-  service Service? @relation(fields: [serviceId], references: [id])
-  package Package? @relation(fields: [packageId], references: [id])
-
   @@index([userId])
   @@index([status])
   @@index([scheduledAt])
   @@index([expiresAt])
-  @@index([serviceId])
-  @@index([packageId])
 }
 
 enum CatalogCategory {
