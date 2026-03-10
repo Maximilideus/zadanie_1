@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   adminLogout,
@@ -25,9 +25,25 @@ const TYPE_LABELS = {
   OFFER: "Предложение",
   INFO: "Инфо",
   PACKAGE: "Комплекс",
+  SUBSCRIPTION: "Абонемент",
 };
 
 const CATEGORIES = ["", "LASER", "WAX", "ELECTRO", "MASSAGE"];
+
+const TYPE_FILTER_OPTIONS = [
+  { value: "", label: "Все типы" },
+  { value: "SERVICE", label: "Обычная услуга" },
+  { value: "PACKAGE", label: "Комплекс" },
+  { value: "SUBSCRIPTION", label: "Абонемент" },
+];
+
+function matchesTypeFilter(item, filterType) {
+  if (!filterType) return true;
+  if (filterType === "SERVICE") return ["ZONE", "OFFER", "INFO"].includes(item.type);
+  if (filterType === "PACKAGE") return item.type === "PACKAGE";
+  if (filterType === "SUBSCRIPTION") return item.type === "SUBSCRIPTION";
+  return true;
+}
 
 export function AdminCatalogPage({ adminUser, onLogout }) {
   const navigate = useNavigate();
@@ -36,6 +52,8 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState({});
@@ -59,9 +77,17 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
     loadItems();
   }, [loadItems]);
 
-  const filtered = filterCategory
-    ? items.filter((i) => i.category === filterCategory)
-    : items;
+  const filtered = items.filter((i) => {
+    if (filterCategory && i.category !== filterCategory) return false;
+    if (!matchesTypeFilter(i, filterType)) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const title = (i.titleRu || "").toLowerCase();
+      const desc = (i.descriptionRu || "").toLowerCase();
+      if (!title.includes(q) && !desc.includes(q)) return false;
+    }
+    return true;
+  });
 
   const sorted = [...filtered].sort((a, b) => {
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
@@ -199,25 +225,58 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
           </div>
         </header>
 
-        {/* Filters */}
-        <div className="admin-filters-card" style={s.filters}>
-          <div style={s.filterGroup}>
-            <label style={s.filterLabel}>Категория</label>
-            <select
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-              style={s.filterSelect}
-            >
-              <option value="">Все категории</option>
-              {CATEGORIES.filter(Boolean).map((cat) => (
-                <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
-              ))}
-            </select>
+        {/* Toolbar: filters + search + actions */}
+        <div className="admin-filters-card" style={s.toolbar}>
+          <div style={s.toolbarFilters}>
+            <div style={s.filterGroup}>
+              <label style={s.filterLabel}>Категория</label>
+              <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                style={s.filterSelect}
+              >
+                <option value="">Все категории</option>
+                {CATEGORIES.filter(Boolean).map((cat) => (
+                  <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+                ))}
+              </select>
+            </div>
+            <div style={s.filterGroup}>
+              <label style={s.filterLabel}>Тип</label>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                style={s.filterSelect}
+              >
+                {TYPE_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.value || "all"} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={s.filterGroup}>
+              <label style={s.filterLabel}>Поиск</label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Название или описание"
+                style={s.searchInput}
+              />
+            </div>
           </div>
-
-          <button onClick={loadItems} style={s.refreshBtn} disabled={loading}>
-            {loading ? "…" : "Обновить"}
-          </button>
+          <div style={s.toolbarActions}>
+            <button
+              type="button"
+              onClick={() => {}}
+              style={s.newServiceBtn}
+              title="Добавить новую услугу (в разработке)"
+            >
+              + Новая услуга
+            </button>
+            <button onClick={loadItems} style={s.refreshBtn} disabled={loading}>
+              {loading ? "…" : "Обновить"}
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -228,7 +287,9 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
             <p style={{ ...s.msg, color: "#b91c1c" }}>{error}</p>
           ) : sorted.length === 0 ? (
             <p style={s.msg}>
-              {filterCategory ? "В этой категории нет позиций." : "В каталоге пока нет позиций."}
+              {filterCategory || filterType || searchQuery.trim()
+                ? "Нет позиций по выбранным фильтрам."
+                : "В каталоге пока нет позиций."}
             </p>
           ) : (
             <>
@@ -237,17 +298,14 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                 <table className="admin-table admin-catalog-table" style={s.table}>
                   <thead>
                     <tr>
-                      <th style={s.th}>Категория</th>
-                      <th style={s.th}>Тип</th>
-                      <th style={s.th}>Название</th>
-                      <th style={s.th}>Описание</th>
-                      <th style={s.th}>Кол-во сеансов / примечание</th>
-                      <th style={s.th}>Цена</th>
-                      <th style={s.th}>Длительность</th>
-                      <th style={s.th}>Порядок</th>
-                      <th style={s.th}>На сайте</th>
-                      <th style={s.th}>Сервис</th>
-                      <th style={s.th}>Действия</th>
+                      <th style={s.thCat}>Категория</th>
+                      <th style={s.thType}>Тип</th>
+                      <th style={s.thTitle}>Название</th>
+                      <th style={s.thPrice}>Цена</th>
+                      <th style={s.thDur}>Длительность</th>
+                      <th style={s.thVis}>На сайте</th>
+                      <th style={s.thSvc}>Сервис</th>
+                      <th style={s.thAct}>Действия</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -257,134 +315,143 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                       if (isEditing) {
                         return (
                           <React.Fragment key={item.id}>
-                          <tr style={s.trEditing}>
-                            <td style={s.td}>
-                              <span style={{ ...s.badge, background: CATEGORY_COLORS[item.category] || "#888" }}>
-                                {CATEGORY_LABELS[item.category] || item.category}
-                              </span>
-                            </td>
-                            <td style={s.td}>
-                              <span style={s.typeLabel}>{TYPE_LABELS[item.type] || item.type}</span>
-                            </td>
-                            <td style={s.td}>
-                              <input
-                                style={s.editInput}
-                                value={editDraft.titleRu}
-                                onChange={(e) => handleDraftChange("titleRu", e.target.value)}
-                              />
-                            </td>
-                            <td style={s.td}>
-                              <input
-                                style={s.editInput}
-                                value={editDraft.descriptionRu}
-                                onChange={(e) => handleDraftChange("descriptionRu", e.target.value)}
-                                placeholder="—"
-                              />
-                            </td>
-                            <td style={s.td}>
-                              <input
-                                style={s.editInput}
-                                value={editDraft.sessionsNoteRu}
-                                onChange={(e) => handleDraftChange("sessionsNoteRu", e.target.value)}
-                                placeholder="например: 6–8 сеансов"
-                              />
-                            </td>
-                            <td style={s.td}>
-                              {editDraft.type === "PACKAGE" ? (
-                                <span style={s.subText}>
-                                  {item.price != null ? `${item.price} ₽` : "—"}
-                                </span>
-                              ) : (
-                                <input
-                                  style={{ ...s.editInput, width: "70px" }}
-                                  type="number"
-                                  min="0"
-                                  value={editDraft.price}
-                                  onChange={(e) => handleDraftChange("price", e.target.value)}
-                                />
-                              )}
-                            </td>
-                            <td style={s.td}>
-                              {editDraft.type === "PACKAGE" ? (
-                                <span style={s.subText}>
-                                  {item.durationMin != null ? `${item.durationMin} мин` : "—"}
-                                </span>
-                              ) : (
-                                <input
-                                  style={{ ...s.editInput, width: "60px" }}
-                                  type="number"
-                                  min="1"
-                                  value={editDraft.durationMin}
-                                  onChange={(e) => handleDraftChange("durationMin", e.target.value)}
-                                />
-                              )}
-                            </td>
-                            <td style={s.td}>
-                              <input
-                                style={{ ...s.editInput, width: "55px" }}
-                                type="number"
-                                min="0"
-                                value={editDraft.sortOrder}
-                                onChange={(e) => handleDraftChange("sortOrder", e.target.value)}
-                              />
-                            </td>
-                            <td style={s.td}>
-                              <input
-                                type="checkbox"
-                                checked={editDraft.isVisible}
-                                onChange={(e) => handleDraftChange("isVisible", e.target.checked)}
-                                style={s.checkbox}
-                              />
-                            </td>
-                            <td style={s.td}>
-                              <span style={s.subText}>{item.serviceId ? "✔" : "—"}</span>
-                            </td>
-                            <td style={s.td}>
-                              <div style={s.actions}>
-                                <button
-                                  onClick={handleSave}
-                                  disabled={saving}
-                                  style={{ ...s.actionBtn, background: "#1a8c3a" }}
-                                >
-                                  {saving ? "…" : "Сохранить"}
-                                </button>
-                                <button
-                                  onClick={cancelEdit}
-                                  disabled={saving}
-                                  style={{ ...s.actionBtn, background: "#888" }}
-                                >
-                                  Отмена
-                                </button>
-                              </div>
-                              {saveError && <div style={s.saveError}>{saveError}</div>}
-                            </td>
-                          </tr>
-                          {editDraft.type === "PACKAGE" && (
                             <tr style={s.trEditing}>
-                              <td colSpan={11} style={s.td}>
-                                <div style={s.packageZones}>
-                                  <span style={s.packageZonesLabel}>Зоны в комплексе:</span>
-                                  {zonesForPackage(editDraft.category).map((zone) => (
-                                    <label key={zone.id} style={s.checkboxLabel}>
-                                      <input
-                                        type="checkbox"
-                                        checked={(editDraft.packageItemIds ?? []).includes(zone.id)}
-                                        onChange={() => togglePackageZone(zone.id)}
-                                        style={s.checkbox}
-                                      />
-                                      {zone.titleRu}
-                                    </label>
-                                  ))}
+                              <td style={s.td}>
+                                <span style={{ ...s.badge, background: CATEGORY_COLORS[item.category] || "#888" }}>
+                                  {CATEGORY_LABELS[item.category] || item.category}
+                                </span>
+                              </td>
+                              <td style={s.td}>
+                                <span style={s.typeLabel}>{TYPE_LABELS[item.type] || item.type}</span>
+                              </td>
+                              <td style={s.td}>
+                                <input
+                                  style={s.editInput}
+                                  value={editDraft.titleRu}
+                                  onChange={(e) => handleDraftChange("titleRu", e.target.value)}
+                                  placeholder="Название"
+                                />
+                              </td>
+                              <td style={s.td}>
+                                {editDraft.type === "PACKAGE" ? (
+                                  <span style={s.subText}>{item.price != null ? `${item.price} ₽` : "—"}</span>
+                                ) : (
+                                  <input
+                                    style={s.editInputNarrow}
+                                    type="number"
+                                    min="0"
+                                    value={editDraft.price}
+                                    onChange={(e) => handleDraftChange("price", e.target.value)}
+                                  />
+                                )}
+                              </td>
+                              <td style={s.td}>
+                                {editDraft.type === "PACKAGE" ? (
+                                  <span style={s.subText}>{item.durationMin != null ? `${item.durationMin} мин` : "—"}</span>
+                                ) : (
+                                  <input
+                                    style={s.editInputNarrow}
+                                    type="number"
+                                    min="1"
+                                    value={editDraft.durationMin}
+                                    onChange={(e) => handleDraftChange("durationMin", e.target.value)}
+                                  />
+                                )}
+                              </td>
+                              <td style={s.td}>
+                                <input
+                                  type="checkbox"
+                                  checked={editDraft.isVisible}
+                                  onChange={(e) => handleDraftChange("isVisible", e.target.checked)}
+                                  style={s.checkboxInput}
+                                  title={editDraft.isVisible ? "Скрыть с сайта" : "Показать на сайте"}
+                                />
+                              </td>
+                              <td style={s.td}>
+                                <span style={s.subText}>{item.serviceId ? "✔" : "—"}</span>
+                              </td>
+                              <td style={s.td}>
+                                <div style={s.actions}>
+                                  <button
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    style={{ ...s.actionBtn, background: "#1a8c3a" }}
+                                  >
+                                    {saving ? "…" : "Сохранить"}
+                                  </button>
+                                  <button
+                                    onClick={cancelEdit}
+                                    disabled={saving}
+                                    style={{ ...s.actionBtn, background: "#888" }}
+                                  >
+                                    Отмена
+                                  </button>
+                                </div>
+                                {saveError && <div style={s.saveError}>{saveError}</div>}
+                              </td>
+                            </tr>
+                            <tr style={s.trEditing}>
+                              <td colSpan={8} style={s.tdExtra}>
+                                <div style={s.extraFields}>
+                                  <div style={s.extraRow}>
+                                    <label style={s.extraLabel}>Описание</label>
+                                    <input
+                                      style={s.extraInput}
+                                      value={editDraft.descriptionRu}
+                                      onChange={(e) => handleDraftChange("descriptionRu", e.target.value)}
+                                      placeholder="Описание (необязательно)"
+                                    />
+                                  </div>
+                                  <div style={s.extraRow}>
+                                    <label style={s.extraLabel}>Сеансы / примечание</label>
+                                    <input
+                                      style={s.extraInput}
+                                      value={editDraft.sessionsNoteRu}
+                                      onChange={(e) => handleDraftChange("sessionsNoteRu", e.target.value)}
+                                      placeholder="например: 6–8 сеансов"
+                                    />
+                                  </div>
+                                  <div style={s.extraRow}>
+                                    <label style={s.extraLabel}>Порядок сортировки</label>
+                                    <input
+                                      style={{ ...s.extraInput, width: "80px" }}
+                                      type="number"
+                                      min="0"
+                                      value={editDraft.sortOrder}
+                                      onChange={(e) => handleDraftChange("sortOrder", e.target.value)}
+                                    />
+                                  </div>
+                                  {editDraft.type === "PACKAGE" && (
+                                    <div style={s.packageZones}>
+                                      <span style={s.packageZonesLabel}>Зоны в комплексе:</span>
+                                      {zonesForPackage(editDraft.category).map((zone) => (
+                                        <label key={zone.id} style={s.checkboxLabel}>
+                                          <input
+                                            type="checkbox"
+                                            checked={(editDraft.packageItemIds ?? []).includes(zone.id)}
+                                            onChange={() => togglePackageZone(zone.id)}
+                                            style={s.checkboxInput}
+                                          />
+                                          {zone.titleRu}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
-                          )}
                           </React.Fragment>
                         );
                       }
 
+                      const secondary = [
+                        item.descriptionRu,
+                        item.sessionsNoteRu,
+                        item.sortOrder != null ? `Порядок: ${item.sortOrder}` : null,
+                      ].filter(Boolean).join(" · ");
+
                       return (
-                        <tr key={item.id} style={{ ...s.tr, opacity: item.isVisible ? 1 : 0.5 }}>
+                        <tr key={item.id} style={{ ...s.tr, opacity: item.isVisible ? 1 : 0.6 }}>
                           <td style={s.td}>
                             <span style={{ ...s.badge, background: CATEGORY_COLORS[item.category] || "#888" }}>
                               {CATEGORY_LABELS[item.category] || item.category}
@@ -394,20 +461,17 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
                             <span style={s.typeLabel}>{TYPE_LABELS[item.type] || item.type}</span>
                           </td>
                           <td style={s.td}>
-                            {item.titleRu}
-                            {item.subtitleRu && (
-                              <span style={s.sub}>{item.subtitleRu}</span>
-                            )}
-                          </td>
-                          <td style={s.td}>
-                            <span style={s.subText}>{item.descriptionRu || "—"}</span>
-                          </td>
-                          <td style={s.td}>
-                            <span style={s.subText}>{item.sessionsNoteRu || "—"}</span>
+                            <div style={s.titleBlock}>
+                              <span style={s.titleMain}>
+                                {item.type === "PACKAGE" && <span style={s.packageTag}>Комплекс: </span>}
+                                {item.titleRu}
+                              </span>
+                              {item.subtitleRu && <span style={s.sub}>{item.subtitleRu}</span>}
+                              {secondary && <span style={s.secondary}>{secondary}</span>}
+                            </div>
                           </td>
                           <td style={s.td}>{item.price != null ? `${item.price} ₽` : "—"}</td>
                           <td style={s.td}>{item.durationMin != null ? `${item.durationMin} мин` : "—"}</td>
-                          <td style={s.td}>{item.sortOrder}</td>
                           <td style={s.td}>
                             <button
                               onClick={() => handleToggleVisibility(item)}
@@ -446,14 +510,6 @@ export function AdminCatalogPage({ adminUser, onLogout }) {
 const s = {
   wrapper: { minHeight: "100vh" },
   container: {},
-  tableWrap: {
-    overflowX: "visible",
-    width: "100%",
-  },
-  table: {
-    tableLayout: "fixed",
-    width: "100%",
-  },
   header: {
     display: "flex", justifyContent: "space-between", alignItems: "center",
     marginBottom: "24px",
@@ -466,35 +522,71 @@ const s = {
     padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
     background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
   },
-  filters: {
-    display: "flex", flexWrap: "wrap", gap: "12px", alignItems: "flex-end",
+  toolbar: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "16px",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginBottom: "20px",
   },
+  toolbarFilters: { display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "flex-end" },
+  toolbarActions: { display: "flex", gap: "10px", alignItems: "center", marginLeft: "auto" },
   filterGroup: { display: "flex", flexDirection: "column", gap: "4px" },
   filterLabel: { fontSize: "12px", fontWeight: 600, color: "#6b7280" },
   filterSelect: {
     padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "8px",
-    fontSize: "14px", minWidth: "160px", background: "#fff",
+    fontSize: "14px", minWidth: "140px", background: "#fff",
+  },
+  searchInput: {
+    padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    fontSize: "14px", width: "200px", background: "#fff",
+  },
+  newServiceBtn: {
+    padding: "10px 18px", border: "1px solid #2563eb", borderRadius: "8px",
+    background: "#2563eb", color: "#fff", fontSize: "14px", fontWeight: 600,
+    cursor: "pointer", whiteSpace: "nowrap",
   },
   refreshBtn: {
-    padding: "8px 14px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
     background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
-    marginLeft: "auto",
   },
   content: { padding: "24px", marginBottom: "24px" },
   msg: { color: "#6b7280", fontSize: "15px", textAlign: "center", padding: "32px 0" },
   count: { fontSize: "13px", color: "#6b7280", marginBottom: "12px" },
-  th: { wordWrap: "break-word", overflowWrap: "break-word" },
-  tr: { borderBottom: "1px solid #f3f4f6" },
-  trEditing: { background: "#f9fafb" },
-  td: { wordWrap: "break-word", overflowWrap: "break-word" },
-  sub: { display: "block", fontSize: "12px", color: "#6b7280", marginTop: "2px" },
-  packageZones: { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "center", marginBottom: "8px" },
+  tableWrap: { overflowX: "visible", width: "100%" },
+  table: { tableLayout: "fixed", width: "100%" },
+  thCat: { width: "10%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  thType: { width: "10%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  thTitle: { width: "28%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  thPrice: { width: "10%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  thDur: { width: "10%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  thVis: { width: "8%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  thSvc: { width: "6%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  thAct: { width: "18%", wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px" },
+  tr: { borderBottom: "1px solid #e5e7eb" },
+  trEditing: { background: "#f8fafc" },
+  td: { wordWrap: "break-word", overflowWrap: "break-word", padding: "12px 14px", verticalAlign: "top" },
+  titleBlock: { display: "flex", flexDirection: "column", gap: "2px" },
+  titleMain: { fontSize: "14px", fontWeight: 500, color: "#111827" },
+  packageTag: { color: "#6b7280", fontWeight: 400 },
+  sub: { fontSize: "12px", color: "#6b7280" },
+  secondary: { fontSize: "11px", color: "#9ca3af", marginTop: "2px", lineHeight: 1.35 },
+  tdExtra: { padding: "12px 14px", background: "#f8fafc", borderBottom: "1px solid #e5e7eb" },
+  extraFields: { display: "flex", flexDirection: "column", gap: "12px", maxWidth: "720px" },
+  extraRow: { display: "flex", flexDirection: "column", gap: "4px" },
+  extraLabel: { fontSize: "11px", fontWeight: 600, color: "#6b7280" },
+  extraInput: {
+    padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: "6px",
+    fontSize: "13px", maxWidth: "400px", boxSizing: "border-box",
+  },
+  packageZones: { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "center", marginTop: "4px" },
   packageZonesLabel: { fontSize: "12px", fontWeight: 600, color: "#6b7280", marginRight: "4px" },
-  checkbox: { margin: 0 },
-  checkboxLabel: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" },
+  checkboxInput: { width: "16px", height: "16px", cursor: "pointer", margin: 0 },
+  checkboxLabel: { display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" },
   subText: { fontSize: "13px", color: "#6b7280" },
   badge: {
-    display: "inline-block", padding: "4px 10px", borderRadius: "12px",
+    display: "inline-block", padding: "4px 8px", borderRadius: "8px",
     fontSize: "11px", fontWeight: 600, color: "#fff", whiteSpace: "nowrap",
   },
   typeLabel: { fontSize: "12px", color: "#6b7280" },
@@ -502,7 +594,10 @@ const s = {
     padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: "6px",
     fontSize: "13px", width: "100%", boxSizing: "border-box",
   },
-  checkbox: { width: "18px", height: "18px", cursor: "pointer" },
+  editInputNarrow: {
+    padding: "6px 8px", border: "1px solid #e5e7eb", borderRadius: "6px",
+    fontSize: "13px", width: "72px", boxSizing: "border-box",
+  },
   visToggle: {
     background: "none", border: "none", fontSize: "18px", cursor: "pointer",
     padding: "2px 6px",

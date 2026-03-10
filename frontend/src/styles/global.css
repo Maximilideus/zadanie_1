@@ -1684,7 +1684,11 @@ input[type="date"]:hover {
   table-layout: fixed;
   width: 100%;
 }
-.admin-catalog-table th,
+.admin-catalog-table th {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
 .admin-catalog-table td {
   word-wrap: break-word;
   overflow-wrap: break-word;
