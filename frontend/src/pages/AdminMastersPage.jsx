@@ -10,6 +10,66 @@ import {
 
 const DAY_LABELS = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
 
+const CATEGORY_ORDER = ["LASER", "WAX", "ELECTRO", "MASSAGE"];
+const CATEGORY_LABEL = { LASER: "Лазер", WAX: "Воск", ELECTRO: "Электро", MASSAGE: "Массаж" };
+const GENDER_ORDER = ["FEMALE", "MALE", "UNISEX", null];
+const GENDER_LABEL = { FEMALE: "Женщины", MALE: "Мужчины", UNISEX: "Унисекс" };
+
+function groupServices(services) {
+  const catMap = new Map();
+  for (const svc of services) {
+    const cat = svc.category || "_NONE";
+    if (!catMap.has(cat)) catMap.set(cat, new Map());
+    const gMap = catMap.get(cat);
+    const g = svc.gender ?? "_NULL";
+    if (!gMap.has(g)) gMap.set(g, []);
+    gMap.get(g).push(svc);
+  }
+  const groups = [];
+  const orderedCats = [...CATEGORY_ORDER.filter((c) => catMap.has(c)), ...([...catMap.keys()].filter((c) => !CATEGORY_ORDER.includes(c)))];
+  for (const cat of orderedCats) {
+    const gMap = catMap.get(cat);
+    const orderedGenders = [...GENDER_ORDER.filter((g) => gMap.has(g ?? "_NULL")), ...([...gMap.keys()].filter((g) => !GENDER_ORDER.map((x) => x ?? "_NULL").includes(g)))];
+    for (const g of orderedGenders) {
+      const gKey = g ?? "_NULL";
+      const svcs = gMap.get(gKey) || [];
+      if (svcs.length === 0) continue;
+      const catLabel = cat === "_NONE" ? "Без категории" : (CATEGORY_LABEL[cat] ?? cat);
+      const gLabel = GENDER_LABEL[g] ?? (g === "_NULL" || g === null ? null : g);
+      const heading = gLabel ? `${catLabel} — ${gLabel}` : catLabel;
+      groups.push({ heading, services: svcs });
+    }
+  }
+  return groups;
+}
+
+function GroupedServiceCheckboxes({ services, selectedIds, onToggle }) {
+  const groups = groupServices(services);
+  return (
+    <div>
+      {groups.map((group) => (
+        <div key={group.heading} style={s.serviceGroup}>
+          <div style={s.serviceGroupHeading}>{group.heading}</div>
+          <div style={s.servicesList}>
+            {group.services.map((svc) => (
+              <label key={svc.id} style={s.serviceItem}>
+                <input
+                  type="checkbox"
+                  style={s.checkbox}
+                  checked={selectedIds.includes(svc.id)}
+                  onChange={() => onToggle(svc.id)}
+                />
+                <span>{svc.name}</span>
+                <span style={s.serviceMeta}>{svc.durationMin} мин · {svc.price} ₽</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AdminMastersPage({ adminUser, onLogout }) {
   const navigate = useNavigate();
 
@@ -219,6 +279,9 @@ export function AdminMastersPage({ adminUser, onLogout }) {
             <nav className="admin-nav">
               <button type="button" onClick={() => navigate("/admin/bookings")} className="admin-nav-btn">Записи</button>
               <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
+              <button type="button" onClick={() => navigate("/admin/services")} className="admin-nav-btn">Услуги</button>
+              <button type="button" onClick={() => navigate("/admin/packages")} className="admin-nav-btn">Комплексы</button>
+              <button type="button" onClick={() => navigate("/admin/zones")} className="admin-nav-btn">Зоны</button>
               <button type="button" className="admin-nav-btn active">Мастера</button>
             </nav>
           </div>
@@ -277,20 +340,14 @@ export function AdminMastersPage({ adminUser, onLogout }) {
             {allServices.length > 0 && (
               <div style={s.servicesSection}>
                 <p style={s.servicesTitle}>Услуги мастера</p>
-                <div style={s.servicesList}>
-                  {allServices.map((svc) => (
-                    <label key={svc.id} style={s.serviceItem}>
-                      <input type="checkbox" style={s.checkbox}
-                        checked={createDraft.serviceIds.includes(svc.id)}
-                        onChange={() => setCreateDraft((prev) => ({
-                          ...prev,
-                          serviceIds: toggleServiceId(prev.serviceIds, svc.id),
-                        }))} />
-                      <span>{svc.name}</span>
-                      <span style={s.serviceMeta}>{svc.durationMin} мин · {svc.price} ₽</span>
-                    </label>
-                  ))}
-                </div>
+                <GroupedServiceCheckboxes
+                  services={allServices}
+                  selectedIds={createDraft.serviceIds}
+                  onToggle={(id) => setCreateDraft((prev) => ({
+                    ...prev,
+                    serviceIds: toggleServiceId(prev.serviceIds, id),
+                  }))}
+                />
               </div>
             )}
             {createError && <p style={s.formError}>{createError}</p>}
@@ -381,20 +438,14 @@ export function AdminMastersPage({ adminUser, onLogout }) {
                                 <td colSpan={8} style={s.td}>
                                   <div style={s.servicesSection}>
                                     <p style={s.servicesTitle}>Услуги мастера</p>
-                                    <div style={s.servicesList}>
-                                      {allServices.map((svc) => (
-                                        <label key={svc.id} style={s.serviceItem}>
-                                          <input type="checkbox" style={s.checkbox}
-                                            checked={(editDraft.serviceIds || []).includes(svc.id)}
-                                            onChange={() => handleDraftChange(
-                                              "serviceIds",
-                                              toggleServiceId(editDraft.serviceIds || [], svc.id),
-                                            )} />
-                                          <span>{svc.name}</span>
-                                          <span style={s.serviceMeta}>{svc.durationMin} мин · {svc.price} ₽</span>
-                                        </label>
-                                      ))}
-                                    </div>
+                                    <GroupedServiceCheckboxes
+                                      services={allServices}
+                                      selectedIds={editDraft.serviceIds || []}
+                                      onToggle={(id) => handleDraftChange(
+                                        "serviceIds",
+                                        toggleServiceId(editDraft.serviceIds || [], id),
+                                      )}
+                                    />
                                   </div>
                                 </td>
                               </tr>
@@ -659,8 +710,16 @@ const s = {
   servicesTitle: {
     margin: "0 0 8px", fontSize: "13px", fontWeight: 700, color: "#555",
   },
+  serviceGroup: {
+    marginBottom: "12px",
+  },
+  serviceGroupHeading: {
+    fontSize: "12px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase",
+    letterSpacing: "0.04em", borderBottom: "1px solid #e5e7eb",
+    paddingBottom: "4px", marginBottom: "6px",
+  },
   servicesList: {
-    display: "flex", flexWrap: "wrap", gap: "6px 16px",
+    display: "flex", flexWrap: "wrap", gap: "4px 16px",
   },
   serviceItem: {
     display: "flex", alignItems: "center", gap: "6px",

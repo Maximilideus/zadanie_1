@@ -134,10 +134,100 @@ export async function updateAdminMaster(id, fields) {
   return res.json();
 }
 
-export async function getAdminServices() {
-  const res = await fetch(`${API_BASE}/admin/services`, {
+export async function getAdminZones() {
+  const res = await fetch(`${API_BASE}/admin/zones`, {
     headers: authHeaders(),
   });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить зоны");
+  }
+
+  const data = await res.json();
+  return data.zones ?? [];
+}
+
+export async function createAdminZone(fields) {
+  const res = await fetch(`${API_BASE}/admin/zones`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось создать зону");
+  }
+
+  return res.json();
+}
+
+export async function updateAdminZone(id, fields) {
+  const res = await fetch(`${API_BASE}/admin/zones/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось сохранить зону");
+  }
+
+  return res.json();
+}
+
+export async function getAdminServiceZones() {
+  const res = await fetch(`${API_BASE}/admin/service-zones`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить зоны услуг");
+  }
+
+  const data = await res.json();
+  return data.zones ?? [];
+}
+
+export async function getAdminLocations() {
+  const res = await fetch(`${API_BASE}/admin/locations`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить локации");
+  }
+
+  const data = await res.json();
+  return data.locations ?? [];
+}
+
+export async function createAdminService(fields) {
+  const res = await fetch(`${API_BASE}/admin/services`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось создать услугу");
+  }
+
+  return res.json();
+}
+
+export async function getAdminServices(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.gender) qs.set("gender", params.gender);
+  if (params.serviceKind) qs.set("serviceKind", params.serviceKind);
+
+  const url = `${API_BASE}/admin/services${qs.toString() ? `?${qs}` : ""}`;
+  const res = await fetch(url, { headers: authHeaders() });
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) clearAdminToken();
@@ -146,6 +236,52 @@ export async function getAdminServices() {
 
   const data = await res.json();
   return data.services ?? [];
+}
+
+export async function updateAdminService(id, fields) {
+  const res = await fetch(`${API_BASE}/admin/services/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось сохранить услугу");
+  }
+
+  return res.json();
+}
+
+export async function getAdminPackages(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.gender) qs.set("gender", params.gender);
+
+  const url = `${API_BASE}/admin/packages${qs.toString() ? `?${qs}` : ""}`;
+  const res = await fetch(url, { headers: authHeaders() });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить комплексы");
+  }
+
+  const data = await res.json();
+  return data.packages ?? [];
+}
+
+export async function updateAdminPackage(id, fields) {
+  const res = await fetch(`${API_BASE}/admin/packages/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось сохранить комплекс");
+  }
+
+  return res.json();
 }
 
 export async function getAdminCatalog() {

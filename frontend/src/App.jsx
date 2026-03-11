@@ -7,7 +7,10 @@ import { ElectroPage } from "./pages/ElectroPage.jsx";
 import { AdminLoginPage } from "./pages/AdminLoginPage.jsx";
 import { AdminBookingsPage } from "./pages/AdminBookingsPage.jsx";
 import { AdminCatalogPage } from "./pages/AdminCatalogPage.jsx";
+import { AdminServicesPage } from "./pages/AdminServicesPage.jsx";
+import { AdminPackagesPage } from "./pages/AdminPackagesPage.jsx";
 import { AdminMastersPage } from "./pages/AdminMastersPage.jsx";
+import { AdminZonesPage } from "./pages/AdminZonesPage.jsx";
 import { getAdminMe, getAdminToken } from "./api/admin.js";
 
 export const TELEGRAM_BOOK_URL = "https://t.me/my_salon_ai_assistant_bot";
@@ -83,10 +86,34 @@ export function App() {
           }
         />
         <Route
+          path="/admin/services"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminServicesPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/packages"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminPackagesPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route
           path="/admin/masters"
           element={
             <AdminGuard adminUser={adminUser}>
               <AdminMastersPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/zones"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminZonesPage adminUser={adminUser} onLogout={handleLogout} />
             </AdminGuard>
           }
         />

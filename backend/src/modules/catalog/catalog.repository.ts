@@ -80,3 +80,128 @@ export async function findCatalogItemsByLocationAndCategory(
   })
 }
 
+// ── New-model queries for website price list ──────────────────
+
+export async function findServicesByLocationAndCategory(
+  locationId: string,
+  category: CatalogCategory,
+) {
+  return prisma.service.findMany({
+    where: { locationId, category, isVisible: true, showOnWebsite: true },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      gender: true,
+      groupKey: true,
+      description: true,
+      price: true,
+      durationMin: true,
+      sortOrder: true,
+      sourceCatalogItemId: true,
+    },
+  })
+}
+
+export async function findNormalizedPackagesByLocationAndCategory(
+  locationId: string,
+  category: CatalogCategory,
+) {
+  return prisma.package.findMany({
+    where: {
+      locationId,
+      category,
+      isVisible: true,
+      showOnWebsite: true,
+      sourceLegacyPackageId: { not: null },
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      gender: true,
+      description: true,
+      price: true,
+      durationMin: true,
+      sortOrder: true,
+      sourceLegacyPackageId: true,
+      normalizedVariantKey: true,
+    },
+  })
+}
+
+/**
+ * All Service.sourceCatalogItemId values for a location/category,
+ * regardless of visibility. Used to build the fallback exclusion list.
+ */
+export async function findAllServiceSourceIds(
+  locationId: string,
+  category: CatalogCategory,
+): Promise<string[]> {
+  const rows = await prisma.service.findMany({
+    where: { locationId, category, sourceCatalogItemId: { not: null } },
+    select: { sourceCatalogItemId: true },
+  })
+  return rows.map((r) => r.sourceCatalogItemId).filter((id): id is string => id !== null)
+}
+
+/**
+ * All Package.sourceLegacyPackageId values for a location/category,
+ * regardless of visibility. Used to build the fallback exclusion list.
+ */
+export async function findAllNormalizedPackageSourceIds(
+  locationId: string,
+  category: CatalogCategory,
+): Promise<string[]> {
+  const rows = await prisma.package.findMany({
+    where: { locationId, category, sourceLegacyPackageId: { not: null } },
+    select: { sourceLegacyPackageId: true },
+  })
+  return rows.map((r) => r.sourceLegacyPackageId).filter((id): id is string => id !== null)
+}
+
+export async function findCatalogItemGroupKeys(ids: string[]) {
+  if (ids.length === 0) return new Map<string, string | null>()
+  const rows = await prisma.catalogItem.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, groupKey: true },
+  })
+  return new Map(rows.map((r) => [r.id, r.groupKey]))
+}
+
+/**
+ * Fetch CatalogItems NOT already represented by Service or normalized Package.
+ * excludeIds: CatalogItem IDs already covered by Service.sourceCatalogItemId
+ *             or Package.sourceLegacyPackageId.
+ */
+export async function findFallbackCatalogItems(
+  locationId: string,
+  category: CatalogCategory,
+  excludeIds: string[],
+) {
+  return prisma.catalogItem.findMany({
+    where: {
+      locationId,
+      category,
+      isVisible: true,
+      type: { notIn: ["PACKAGE"] },
+      ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      type: true,
+      gender: true,
+      groupKey: true,
+      titleRu: true,
+      subtitleRu: true,
+      descriptionRu: true,
+      sessionsNoteRu: true,
+      price: true,
+      durationMin: true,
+    },
+  })
+}
+

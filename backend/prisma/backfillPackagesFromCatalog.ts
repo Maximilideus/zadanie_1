@@ -63,6 +63,7 @@ async function main() {
       sortOrder: catItem.sortOrder,
       price: 0,
       durationMin: 0,
+      packageKind: "MIGRATED" as const,
     };
 
     const existing = await prisma.package.findFirst({

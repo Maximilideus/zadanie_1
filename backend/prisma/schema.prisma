@@ -14,6 +14,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Zone {
+  id        String   @id @default(uuid())
+  zoneKey   String   @unique
+  labelRu   String
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model Location {
   id       String @id @default(uuid())
   name     String
@@ -76,10 +86,15 @@ model Service {
   category    CatalogCategory?
   gender      CatalogGender?
   groupKey    String?
+  /// Stable semantic zone identity (e.g. "armpits", "lower-legs"). Same zone across genders shares the same zoneKey.
+  zoneKey     String?
   description String?
-  isVisible   Boolean @default(true)
-  isBookable  Boolean @default(true)
-  sortOrder   Int     @default(0)
+  serviceKind   ServiceKind @default(BUSINESS)
+  isVisible     Boolean @default(true)
+  isBookable    Boolean @default(true)
+  showOnWebsite Boolean @default(true)
+  showInBot     Boolean @default(true)
+  sortOrder     Int     @default(0)
 
   /// Migration linkage: set when Service was created from CatalogItem. Used for idempotent backfill only.
   sourceCatalogItemId String? @unique
@@ -99,6 +114,7 @@ model Service {
 
   @@index([locationId])
   @@index([sourceCatalogItemId])
+  @@index([zoneKey])
 }
 
 model MasterService {
@@ -124,10 +140,15 @@ model Package {
 
   category    CatalogCategory?
   gender      CatalogGender?
-  description String?
-  isVisible   Boolean @default(true)
-  isBookable  Boolean @default(true)
-  sortOrder   Int     @default(0)
+  description   String?
+  isVisible     Boolean @default(true)
+  isBookable    Boolean @default(true)
+  showOnWebsite Boolean @default(true)
+  showInBot     Boolean @default(false)
+  sortOrder     Int     @default(0)
+
+  /// Classification: MIGRATED = from migration scripts, MANUAL = admin-created.
+  packageKind PackageKind @default(MIGRATED)
 
   /// Link to legacy CatalogItem (type PACKAGE). Null = legacy package (do not modify).
   sourceLegacyPackageId String?
@@ -341,6 +362,16 @@ model Booking {
   @@index([expiresAt])
   @@index([serviceId])
   @@index([packageId])
+}
+
+enum ServiceKind {
+  BUSINESS
+  LEGACY_TEMPLATE
+}
+
+enum PackageKind {
+  MIGRATED
+  MANUAL
 }
 
 enum CatalogCategory {

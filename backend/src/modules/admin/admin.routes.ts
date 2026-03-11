@@ -10,6 +10,7 @@ import { updateBookingStatus } from "../booking/booking.service"
 import type { BookingStatus } from "../booking/booking.status.machine"
 import { sendBookingStatusNotification } from "../../services/bookingNotifications"
 import { getServiceDisplayName } from "../../services/serviceDisplayName"
+import { recalcAffectedPackages } from "../../services/packageAggregateSync"
 
 const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/
 function parseSalonDate(dateStr: string): Date {
@@ -37,6 +38,15 @@ const bookingsQuery = z.object({
   masterId: z.string().uuid().optional(),
 })
 
+const servicesQuery = z.object({
+  gender: z.enum(["FEMALE", "MALE", "UNISEX", "NONE"]).optional(),
+  serviceKind: z.enum(["BUSINESS", "LEGACY_TEMPLATE"]).optional(),
+})
+
+const packagesQuery = z.object({
+  gender: z.enum(["FEMALE", "MALE", "UNISEX", "NONE"]).optional(),
+})
+
 const statusPatchBody = z.object({
   status: z.enum(["CONFIRMED", "CANCELLED", "COMPLETED"]),
 })
@@ -50,6 +60,32 @@ const catalogPatchBody = z.object({
   isVisible: z.boolean().optional(),
   sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
   packageItemIds: z.array(z.string().uuid()).optional(),
+})
+
+const catalogCategoryEnum = z.enum(["LASER", "WAX", "ELECTRO", "MASSAGE"])
+const catalogGenderEnum = z.enum(["FEMALE", "MALE", "UNISEX"])
+const groupKeyEnum = z.enum(["face", "body", "intimate", "other"])
+
+const servicePatchBody = z.object({
+  name: z.string().min(1, "name не может быть пустым").optional(),
+  category: catalogCategoryEnum.nullable().optional(),
+  gender: catalogGenderEnum.nullable().optional(),
+  groupKey: groupKeyEnum.nullable().optional(),
+  price: z.number().int().min(0, "price >= 0").optional(),
+  durationMin: z.number().int().min(1, "durationMin > 0").optional(),
+  isVisible: z.boolean().optional(),
+  showOnWebsite: z.boolean().optional(),
+  showInBot: z.boolean().optional(),
+  sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+})
+
+const packagePatchBody = z.object({
+  name: z.string().min(1, "name не может быть пустым").optional(),
+  gender: catalogGenderEnum.nullable().optional(),
+  isVisible: z.boolean().optional(),
+  showOnWebsite: z.boolean().optional(),
+  showInBot: z.boolean().optional(),
+  sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
 })
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -369,14 +405,500 @@ export async function adminRoutes(app: FastifyInstance) {
     return { masters: raw.map(flattenMaster) }
   })
 
-  app.get("/services", {
+  // ── Zones dictionary ────────────────────────────────────────
+
+  const zoneKeySlug = z.string().min(1).regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "zoneKey: только строчные буквы, цифры и дефисы")
+
+  const zoneCreateBody = z.object({
+    zoneKey: zoneKeySlug,
+    labelRu: z.string().min(1, "labelRu обязательно"),
+    isActive: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+  })
+
+  const zonePatchBody = z.object({
+    labelRu: z.string().min(1, "labelRu обязательно").optional(),
+    isActive: z.boolean().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+  })
+
+  app.get("/zones", {
     preHandler: adminPreHandlers,
   }, async () => {
-    const services = await prisma.service.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, durationMin: true, price: true },
+    const zones = await prisma.zone.findMany({
+      orderBy: [{ sortOrder: "asc" }, { labelRu: "asc" }],
+      select: { id: true, zoneKey: true, labelRu: true, isActive: true, sortOrder: true },
     })
-    return { services }
+    return { zones }
+  })
+
+  app.post("/zones", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = zoneCreateBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const existing = await prisma.zone.findUnique({
+      where: { zoneKey: body.data.zoneKey },
+      select: { id: true },
+    })
+    if (existing) {
+      return reply.status(409).send({
+        statusCode: 409,
+        error: "Conflict",
+        message: `Зона с ключом "${body.data.zoneKey}" уже существует`,
+      })
+    }
+
+    const created = await prisma.zone.create({
+      data: {
+        zoneKey: body.data.zoneKey,
+        labelRu: body.data.labelRu,
+        isActive: body.data.isActive ?? true,
+        sortOrder: body.data.sortOrder ?? 0,
+      },
+      select: { id: true, zoneKey: true, labelRu: true, isActive: true, sortOrder: true },
+    })
+    return reply.status(201).send({ zone: created })
+  })
+
+  app.patch("/zones/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const body = zonePatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const updated = await prisma.zone.update({
+      where: { id },
+      data: body.data,
+      select: { id: true, zoneKey: true, labelRu: true, isActive: true, sortOrder: true },
+    })
+    return { zone: updated }
+  })
+
+  // ── Service zones (legacy, derived from services) ─────────────
+
+  app.get("/service-zones", {
+    preHandler: adminPreHandlers,
+  }, async () => {
+    const rows = await prisma.service.findMany({
+      where: { zoneKey: { not: null } },
+      select: { zoneKey: true, name: true },
+      orderBy: { name: "asc" },
+    })
+
+    const labelMap = new Map<string, Map<string, number>>()
+    for (const r of rows) {
+      const zk = r.zoneKey!
+      if (!labelMap.has(zk)) labelMap.set(zk, new Map())
+      const counts = labelMap.get(zk)!
+      counts.set(r.name, (counts.get(r.name) ?? 0) + 1)
+    }
+
+    const zones: { zoneKey: string; label: string }[] = []
+    for (const [zoneKey, counts] of labelMap) {
+      let bestLabel = ""
+      let bestCount = 0
+      for (const [name, count] of counts) {
+        if (count > bestCount) { bestLabel = name; bestCount = count }
+      }
+      zones.push({ zoneKey, label: bestLabel })
+    }
+
+    zones.sort((a, b) => a.label.localeCompare(b.label, "ru"))
+    return { zones }
+  })
+
+  // ── Locations (for admin dropdowns) ────────────────────────
+
+  app.get("/locations", {
+    preHandler: adminPreHandlers,
+  }, async () => {
+    const locations = await prisma.location.findMany({
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    })
+    return { locations }
+  })
+
+  // ── Create service ──────────────────────────────────────────
+
+  const serviceCreateBody = z.object({
+    name: z.string().min(1, "name обязательно"),
+    category: catalogCategoryEnum,
+    gender: catalogGenderEnum.nullable(),
+    zoneKey: z.string().min(1, "zoneKey обязательно"),
+    groupKey: groupKeyEnum,
+    price: z.number().int().min(0, "price >= 0"),
+    durationMin: z.number().int().min(1, "durationMin > 0"),
+    locationId: z.string().uuid("невалидный locationId"),
+    isVisible: z.boolean().optional(),
+    showOnWebsite: z.boolean().optional(),
+    showInBot: z.boolean().optional(),
+    sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+  })
+
+  app.post("/services", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = serviceCreateBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const { name, category, gender, zoneKey, groupKey, price, durationMin, locationId,
+      isVisible, showOnWebsite, showInBot, sortOrder } = body.data
+
+    const duplicate = await prisma.service.findFirst({
+      where: { category, gender, locationId, zoneKey },
+      select: { id: true, name: true },
+    })
+    if (duplicate) {
+      return reply.status(409).send({
+        statusCode: 409,
+        error: "Conflict",
+        message: `Услуга с такой зоной уже существует: "${duplicate.name}" (${duplicate.id})`,
+      })
+    }
+
+    const created = await prisma.service.create({
+      data: {
+        name,
+        category,
+        gender,
+        zoneKey,
+        price,
+        durationMin,
+        locationId,
+        serviceKind: "BUSINESS",
+        sourceCatalogItemId: null,
+        isVisible: isVisible ?? true,
+        showOnWebsite: showOnWebsite ?? true,
+        showInBot: showInBot ?? true,
+        sortOrder: sortOrder ?? 0,
+      },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        gender: true,
+        zoneKey: true,
+        groupKey: true,
+        price: true,
+        durationMin: true,
+        serviceKind: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        location: { select: { id: true, name: true } },
+        sourceCatalogItemId: true,
+      },
+    })
+
+    return reply.status(201).send({
+      service: {
+        id: created.id,
+        name: created.name,
+        category: created.category,
+        gender: created.gender,
+        zoneKey: created.zoneKey,
+        groupKey: created.groupKey,
+        price: created.price,
+        durationMin: created.durationMin,
+        serviceKind: created.serviceKind,
+        isVisible: created.isVisible,
+        showOnWebsite: created.showOnWebsite,
+        showInBot: created.showInBot,
+        sortOrder: created.sortOrder,
+        locationId: created.locationId,
+        location: created.location,
+        fromCatalog: false,
+      },
+    })
+  })
+
+  // ── Services list ──────────────────────────────────────────
+
+  app.get("/services", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const q = servicesQuery.safeParse(request.query)
+    if (!q.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Invalid query parameters",
+      })
+    }
+    const where: Record<string, unknown> = {}
+    if (q.data.gender !== undefined) {
+      where.gender = q.data.gender === "NONE" ? null : q.data.gender
+    }
+    where.serviceKind = q.data.serviceKind ?? "BUSINESS"
+    const services = await prisma.service.findMany({
+      where: where as any,
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        gender: true,
+        groupKey: true,
+        durationMin: true,
+        price: true,
+        serviceKind: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        sourceCatalogItemId: true,
+        location: { select: { id: true, name: true } },
+      },
+    })
+    return {
+      services: services.map((s) => ({
+        id: s.id,
+        name: s.name,
+        category: s.category,
+        gender: s.gender,
+        groupKey: s.groupKey,
+        durationMin: s.durationMin,
+        price: s.price,
+        serviceKind: s.serviceKind,
+        isVisible: s.isVisible,
+        showOnWebsite: s.showOnWebsite,
+        showInBot: s.showInBot,
+        sortOrder: s.sortOrder,
+        locationId: s.locationId,
+        location: s.location,
+        fromCatalog: !!s.sourceCatalogItemId,
+      })),
+    }
+  })
+
+  app.get("/packages", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const q = packagesQuery.safeParse(request.query)
+    if (!q.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Invalid query parameters",
+      })
+    }
+    const where: Record<string, unknown> = {
+      sourceLegacyPackageId: { not: null },
+    }
+    if (q.data.gender !== undefined) {
+      where.gender = q.data.gender === "NONE" ? null : q.data.gender
+    }
+    const packages = await prisma.package.findMany({
+      where: where as any,
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        gender: true,
+        price: true,
+        durationMin: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        normalizedVariantKey: true,
+        sourceLegacyPackageId: true,
+        location: { select: { id: true, name: true } },
+      },
+    })
+    return {
+      packages: packages.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        gender: p.gender,
+        price: p.price,
+        durationMin: p.durationMin,
+        isVisible: p.isVisible,
+        showOnWebsite: p.showOnWebsite,
+        showInBot: p.showInBot,
+        sortOrder: p.sortOrder,
+        locationId: p.locationId,
+        location: p.location,
+        normalizedVariantKey: p.normalizedVariantKey,
+      })),
+    }
+  })
+
+  app.patch("/services/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const body = servicePatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+    const existing = await prisma.service.findUnique({
+      where: { id },
+      select: { id: true, serviceKind: true },
+    })
+    if (!existing) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Услуга не найдена",
+      })
+    }
+    if (existing.serviceKind === "LEGACY_TEMPLATE") {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: "Forbidden",
+        message: "Системные шаблонные услуги нельзя редактировать.",
+      })
+    }
+    const data = { ...body.data }
+    const priceOrDurationChanged = data.price !== undefined || data.durationMin !== undefined
+
+    const updated = await prisma.service.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        gender: true,
+        groupKey: true,
+        price: true,
+        durationMin: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        location: { select: { id: true, name: true } },
+        sourceCatalogItemId: true,
+      },
+    })
+
+    if (priceOrDurationChanged) {
+      recalcAffectedPackages(id).catch((err) => {
+        console.error("[admin] Package aggregate sync error (non-fatal):", err)
+      })
+    }
+
+    return {
+      service: {
+        id: updated.id,
+        name: updated.name,
+        category: updated.category,
+        gender: updated.gender,
+        groupKey: updated.groupKey,
+        price: updated.price,
+        durationMin: updated.durationMin,
+        isVisible: updated.isVisible,
+        showOnWebsite: updated.showOnWebsite,
+        showInBot: updated.showInBot,
+        sortOrder: updated.sortOrder,
+        locationId: updated.locationId,
+        location: updated.location,
+        fromCatalog: !!updated.sourceCatalogItemId,
+      },
+    }
+  })
+
+  app.patch("/packages/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const body = packagePatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+    const existing = await prisma.package.findUnique({
+      where: { id },
+      select: { id: true, sourceLegacyPackageId: true },
+    })
+    if (!existing) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Комплекс не найден",
+      })
+    }
+    if (existing.sourceLegacyPackageId === null) {
+      return reply.status(403).send({
+        statusCode: 403,
+        error: "Forbidden",
+        message: "Редактирование legacy-комплексов запрещено. Используйте только нормализованные комплексы.",
+      })
+    }
+    const data = { ...body.data }
+    const updated = await prisma.package.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        gender: true,
+        price: true,
+        durationMin: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        normalizedVariantKey: true,
+        location: { select: { id: true, name: true } },
+      },
+    })
+    return {
+      package: {
+        id: updated.id,
+        name: updated.name,
+        category: updated.category,
+        gender: updated.gender,
+        price: updated.price,
+        durationMin: updated.durationMin,
+        isVisible: updated.isVisible,
+        showOnWebsite: updated.showOnWebsite,
+        showInBot: updated.showInBot,
+        sortOrder: updated.sortOrder,
+        locationId: updated.locationId,
+        location: updated.location,
+        normalizedVariantKey: updated.normalizedVariantKey,
+      },
+    }
   })
 
   app.post("/masters", {
@@ -656,6 +1178,10 @@ export async function adminRoutes(app: FastifyInstance) {
         await prisma.service.update({
           where: { id: existing.serviceId },
           data: serviceData,
+        }).then(() => {
+          recalcAffectedPackages(existing.serviceId!).catch((err) => {
+            console.error("[admin-catalog] Package aggregate sync error (non-fatal):", err)
+          })
         }).catch((err) => {
           console.error("[admin-catalog] Service sync error (non-fatal):", err)
         })

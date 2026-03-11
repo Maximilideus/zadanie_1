@@ -144,6 +144,9 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
             <nav className="admin-nav">
               <button type="button" className="admin-nav-btn active">Записи</button>
               <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
+              <button type="button" onClick={() => navigate("/admin/services")} className="admin-nav-btn">Услуги</button>
+              <button type="button" onClick={() => navigate("/admin/packages")} className="admin-nav-btn">Комплексы</button>
+              <button type="button" onClick={() => navigate("/admin/zones")} className="admin-nav-btn">Зоны</button>
               <button type="button" onClick={() => navigate("/admin/masters")} className="admin-nav-btn">Мастера</button>
             </nav>
           </div>

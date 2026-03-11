@@ -109,6 +109,76 @@ export type CatalogGroupedResponse = {
   sections: GroupedSections
 }
 
+// ── New-model → DTO mappers for website price list ────────────
+
+type ServiceRecord = {
+  id: string
+  name: string
+  gender: CatalogGender | null
+  groupKey: string | null
+  description: string | null
+  price: number
+  durationMin: number
+  sourceCatalogItemId: string | null
+}
+
+/**
+ * Map a Service row to CatalogItemDto.
+ * Uses sourceCatalogItemId as the DTO id so existing Telegram booking links
+ * (which reference CatalogItem) keep working.
+ */
+export function mapServiceToDto(svc: ServiceRecord): CatalogItemDto {
+  return {
+    id: svc.sourceCatalogItemId ?? svc.id,
+    type: "ZONE",
+    gender: svc.gender,
+    groupKey: svc.groupKey,
+    title: svc.name,
+    subtitle: svc.durationMin != null ? `${svc.durationMin} мин` : null,
+    description: svc.description,
+    sessionsNoteRu: null,
+    price: svc.price,
+    durationMin: svc.durationMin,
+  }
+}
+
+type NormalizedPackageRecord = {
+  id: string
+  name: string
+  gender: CatalogGender | null
+  description: string | null
+  price: number
+  durationMin: number
+  sourceLegacyPackageId: string | null
+}
+
+/**
+ * Map a normalized Package row to CatalogItemDto.
+ * Uses sourceLegacyPackageId as the DTO id so existing Telegram booking links
+ * (which reference CatalogItem PACKAGE) keep working.
+ * groupKey is resolved from the source CatalogItem via the provided map.
+ */
+export function mapNormalizedPackageToDto(
+  pkg: NormalizedPackageRecord,
+  groupKeyMap: Map<string, string | null>,
+): CatalogItemDto {
+  const resolvedGroupKey = pkg.sourceLegacyPackageId
+    ? (groupKeyMap.get(pkg.sourceLegacyPackageId) ?? "other")
+    : "other"
+  return {
+    id: pkg.sourceLegacyPackageId ?? pkg.id,
+    type: "PACKAGE",
+    gender: pkg.gender,
+    groupKey: resolvedGroupKey,
+    title: pkg.name,
+    subtitle: pkg.durationMin != null ? `${pkg.durationMin} мин` : null,
+    description: pkg.description,
+    sessionsNoteRu: null,
+    price: pkg.price,
+    durationMin: pkg.durationMin,
+  }
+}
+
 export function buildGroupedCatalogResponse(
   category: CatalogCategorySlug,
   items: CatalogItemDto[],
