@@ -64,11 +64,12 @@ const GROUPKEY_OPTIONS = [
 const GROUPKEY_EDIT_OPTIONS = [
   { value: "", label: "—" },
   ...GROUPKEY_OPTIONS,
+  { value: "time", label: "Пакеты времени" },
 ];
 
 const GROUPKEY_CONFIRM_MSG = "Вы изменяете раздел отображения услуги на сайте.\nЭто может повлиять на структуру прайса.";
 
-const GROUPKEY_LABELS = { face: "Лицо", body: "Тело", intimate: "Интимная зона", other: "Другое" };
+const GROUPKEY_LABELS = { face: "Лицо", body: "Тело", intimate: "Интимная зона", other: "Другое", time: "Пакеты времени" };
 
 function groupKeyDisplay(gk) {
   if (gk == null || gk === "") return "—";
@@ -97,6 +98,7 @@ export function AdminServicesPage({ adminUser, onLogout }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [showGroupKeyConfirm, setShowGroupKeyConfirm] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
 
   // ── Create form state ──────────────────────────────────────
   const [showCreate, setShowCreate] = useState(false);
@@ -211,6 +213,9 @@ export function AdminServicesPage({ adminUser, onLogout }) {
       groupKey: item.groupKey ?? "",
       price: item.price != null ? String(item.price) : "",
       durationMin: item.durationMin != null ? String(item.durationMin) : "",
+      sessionDurationLabelRu: item.sessionDurationLabelRu ?? "",
+      sessionsNoteRu: item.sessionsNoteRu ?? "",
+      courseTermRu: item.courseTermRu ?? "",
       isVisible: item.isVisible ?? true,
       showOnWebsite: item.showOnWebsite ?? true,
       showInBot: item.showInBot ?? true,
@@ -231,26 +236,41 @@ export function AdminServicesPage({ adminUser, onLogout }) {
 
   const performSave = async () => {
     const nameVal = (editDraft.name ?? "").trim();
-    const priceVal = editDraft.price === "" ? undefined : Number(editDraft.price);
-    const durVal = editDraft.durationMin === "" ? undefined : Number(editDraft.durationMin);
+    const originalItem = items.find((i) => i.id === editingId);
+    const electroZone = isElectroZone(originalItem);
+    const priceVal = electroZone ? originalItem?.price : (editDraft.price === "" ? undefined : Number(editDraft.price));
+    const durVal = electroZone ? originalItem?.durationMin : (editDraft.durationMin === "" ? undefined : Number(editDraft.durationMin));
     const sortVal = Number(editDraft.sortOrder);
     const groupKeyVal = editDraft.groupKey || null;
+    const sessionDurationLabelRuVal = (editDraft.sessionDurationLabelRu ?? "").trim() || null;
+    const sessionsNoteRuVal = (editDraft.sessionsNoteRu ?? "").trim() || null;
+    const courseTermRuVal = (editDraft.courseTermRu ?? "").trim() || null;
+
+    const payload = {
+      name: nameVal,
+      category: editDraft.category || null,
+      gender: editDraft.gender || null,
+      groupKey: groupKeyVal,
+      sessionDurationLabelRu: sessionDurationLabelRuVal,
+      sessionsNoteRu: sessionsNoteRuVal,
+      courseTermRu: courseTermRuVal,
+      showOnWebsite: editDraft.showOnWebsite,
+      sortOrder: sortVal,
+    };
+    if (!electroZone) {
+      payload.price = priceVal;
+      payload.durationMin = durVal;
+      payload.isVisible = editDraft.isVisible;
+      payload.showInBot = editDraft.showInBot;
+    } else {
+      payload.isVisible = originalItem?.isVisible ?? true;
+      payload.showInBot = false;
+    }
 
     setSaving(true);
     setSaveError("");
     try {
-      await updateAdminService(editingId, {
-        name: nameVal,
-        category: editDraft.category || null,
-        gender: editDraft.gender || null,
-        groupKey: groupKeyVal,
-        price: priceVal,
-        durationMin: durVal,
-        isVisible: editDraft.isVisible,
-        showOnWebsite: editDraft.showOnWebsite,
-        showInBot: editDraft.showInBot,
-        sortOrder: sortVal,
-      });
+      await updateAdminService(editingId, payload);
       setEditingId(null);
       setEditDraft({});
       setShowGroupKeyConfirm(false);
@@ -268,15 +288,22 @@ export function AdminServicesPage({ adminUser, onLogout }) {
       setSaveError("Укажите название");
       return;
     }
-    const priceVal = editDraft.price === "" ? undefined : Number(editDraft.price);
-    if (priceVal !== undefined && (isNaN(priceVal) || priceVal < 0)) {
-      setSaveError("Цена не может быть отрицательной");
-      return;
-    }
-    const durVal = editDraft.durationMin === "" ? undefined : Number(editDraft.durationMin);
-    if (durVal !== undefined && (isNaN(durVal) || durVal < 1)) {
-      setSaveError("Длительность не меньше 1 минуты");
-      return;
+    const originalItem = items.find((i) => i.id === editingId);
+    const electroZone = isElectroZone(originalItem);
+    let priceVal = editDraft.price === "" ? undefined : Number(editDraft.price);
+    let durVal = editDraft.durationMin === "" ? undefined : Number(editDraft.durationMin);
+    if (!electroZone) {
+      if (priceVal !== undefined && (isNaN(priceVal) || priceVal < 0)) {
+        setSaveError("Цена не может быть отрицательной");
+        return;
+      }
+      if (durVal !== undefined && (isNaN(durVal) || durVal < 1)) {
+        setSaveError("Длительность не меньше 1 минуты");
+        return;
+      }
+    } else {
+      priceVal = originalItem?.price;
+      durVal = originalItem?.durationMin;
     }
     const sortVal = Number(editDraft.sortOrder);
     if (isNaN(sortVal) || sortVal < 0) {
@@ -284,7 +311,6 @@ export function AdminServicesPage({ adminUser, onLogout }) {
       return;
     }
 
-    const originalItem = items.find((i) => i.id === editingId);
     const groupKeyChanged = originalItem && (editDraft.groupKey || null) !== (originalItem.groupKey ?? null);
 
     if (groupKeyChanged) {
@@ -310,6 +336,25 @@ export function AdminServicesPage({ adminUser, onLogout }) {
     return true;
   });
 
+  const isElectroZone = (i) => i?.category === "ELECTRO" && i?.groupKey !== "time";
+
+  const handleToggle = async (item, field) => {
+    if (item.serviceKind === "LEGACY_TEMPLATE") return;
+    if (isElectroZone(item) && (field === "showInBot" || field === "isVisible")) return;
+    const next = !item[field];
+    setTogglingId(item.id);
+    try {
+      await updateAdminService(item.id, { [field]: next });
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, [field]: next } : i))
+      );
+    } catch (e) {
+      setError(e.message || "Не удалось изменить");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const handleLogout = () => {
     adminLogout();
     onLogout();
@@ -327,6 +372,7 @@ export function AdminServicesPage({ adminUser, onLogout }) {
               <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
               <button type="button" className="admin-nav-btn active">Услуги</button>
               <button type="button" onClick={() => navigate("/admin/packages")} className="admin-nav-btn">Комплексы</button>
+              <button type="button" onClick={() => navigate("/admin/subscriptions")} className="admin-nav-btn">Абонементы</button>
               <button type="button" onClick={() => navigate("/admin/zones")} className="admin-nav-btn">Зоны</button>
               <button type="button" onClick={() => navigate("/admin/masters")} className="admin-nav-btn">Мастера</button>
             </nav>
@@ -398,7 +444,7 @@ export function AdminServicesPage({ adminUser, onLogout }) {
               </select>
             </div>
             <div style={s.filterGroup}>
-              <label style={s.filterLabel}>Активность</label>
+              <label style={s.filterLabel}>Активна в системе</label>
               <select
                 value={filterIsVisible}
                 onChange={(e) => setFilterIsVisible(e.target.value)}
@@ -637,6 +683,7 @@ export function AdminServicesPage({ adminUser, onLogout }) {
                       <th style={s.th}>Локация</th>
                       <th style={s.th}>На сайте</th>
                       <th style={s.th}>В боте</th>
+                      <th style={s.th}>Активна в системе</th>
                       <th style={s.th}>Действия</th>
                     </tr>
                   </thead>
@@ -644,8 +691,19 @@ export function AdminServicesPage({ adminUser, onLogout }) {
                     {filteredItems.map((item) => {
                       const isEditing = editingId === item.id;
                       if (isEditing) {
+                        const electroZoneEdit = isElectroZone(item);
                         return (
-                          <tr key={item.id} style={s.trEditing}>
+                          <React.Fragment key={item.id}>
+                          {electroZoneEdit && (
+                            <tr style={s.trEditing}>
+                              <td colSpan={11} style={s.tdWarning}>
+                                <div style={s.warningBox}>
+                                  ⚠ Это информационная зона электроэпиляции. Она используется только для отображения на сайте. Запись осуществляется только через пакеты времени (15 / 30 / 45 / 60 / 90 / 120 минут).
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          <tr style={s.trEditing}>
                             <td style={s.td}>
                               <input
                                 style={s.editInput}
@@ -688,22 +746,30 @@ export function AdminServicesPage({ adminUser, onLogout }) {
                               </select>
                             </td>
                             <td style={s.td}>
-                              <input
-                                style={s.editInputNarrow}
-                                type="number"
-                                min="0"
-                                value={editDraft.price}
-                                onChange={(e) => handleDraftChange("price", e.target.value)}
-                              />
+                              {electroZoneEdit ? (
+                                <span style={s.readonlyDash} title="Информационная зона. Цена и длительность не используются.">—</span>
+                              ) : (
+                                <input
+                                  style={s.editInputNarrow}
+                                  type="number"
+                                  min="0"
+                                  value={editDraft.price}
+                                  onChange={(e) => handleDraftChange("price", e.target.value)}
+                                />
+                              )}
                             </td>
                             <td style={s.td}>
-                              <input
-                                style={s.editInputNarrow}
-                                type="number"
-                                min="1"
-                                value={editDraft.durationMin}
-                                onChange={(e) => handleDraftChange("durationMin", e.target.value)}
-                              />
+                              {electroZoneEdit ? (
+                                <span style={s.readonlyDash} title="Информационная зона. Цена и длительность не используются.">—</span>
+                              ) : (
+                                <input
+                                  style={s.editInputNarrow}
+                                  type="number"
+                                  min="1"
+                                  value={editDraft.durationMin}
+                                  onChange={(e) => handleDraftChange("durationMin", e.target.value)}
+                                />
+                              )}
                             </td>
                             <td style={s.td}>{item.location?.name ?? "—"}</td>
                             <td style={s.td}>
@@ -712,20 +778,24 @@ export function AdminServicesPage({ adminUser, onLogout }) {
                                 onChange={(e) => handleDraftChange("showOnWebsite", e.target.checked)} />
                             </td>
                             <td style={s.td}>
-                              <input type="checkbox" style={s.checkboxInput}
-                                checked={editDraft.showInBot ?? false}
-                                onChange={(e) => handleDraftChange("showInBot", e.target.checked)} />
+                              {electroZoneEdit ? (
+                                <span style={s.readonlyDash} title="Информационные зоны не показываются в боте.">—</span>
+                              ) : (
+                                <input type="checkbox" style={s.checkboxInput}
+                                  checked={editDraft.showInBot ?? false}
+                                  onChange={(e) => handleDraftChange("showInBot", e.target.checked)} />
+                              )}
                             </td>
                             <td style={s.td}>
-                              <label style={s.checkboxLabel}>
-                                <input
-                                  type="checkbox"
-                                  checked={editDraft.isVisible}
-                                  onChange={(e) => handleDraftChange("isVisible", e.target.checked)}
-                                  style={s.checkboxInput}
-                                />
-                                Видно
-                              </label>
+                              {electroZoneEdit ? (
+                                <span style={s.readonlyDash} title="Информационные зоны не активируются для записи.">—</span>
+                              ) : (
+                                <input type="checkbox" style={s.checkboxInput}
+                                  checked={editDraft.isVisible ?? false}
+                                  onChange={(e) => handleDraftChange("isVisible", e.target.checked)} />
+                              )}
+                            </td>
+                            <td style={s.td}>
                               <input
                                 style={{ ...s.editInputNarrow, marginTop: 4 }}
                                 type="number"
@@ -745,14 +815,58 @@ export function AdminServicesPage({ adminUser, onLogout }) {
                               {saveError && <div style={s.saveError}>{saveError}</div>}
                             </td>
                           </tr>
+                          {electroZoneEdit && (
+                            <tr style={s.trEditing}>
+                              <td colSpan={11} style={s.tdExtra}>
+                                <div style={s.extraFields}>
+                                  <p style={s.extraNote}>Эти поля используются только для отображения на сайте и не влияют на запись.</p>
+                                  <div style={s.extraRow}>
+                                    <label style={s.extraLabel}>Время за 1 сеанс</label>
+                                    <input
+                                      style={s.extraInput}
+                                      value={editDraft.sessionDurationLabelRu}
+                                      onChange={(e) => handleDraftChange("sessionDurationLabelRu", e.target.value)}
+                                      placeholder="например: 15 мин"
+                                    />
+                                  </div>
+                                  <div style={s.extraRow}>
+                                    <label style={s.extraLabel}>Обычно нужно</label>
+                                    <input
+                                      style={s.extraInput}
+                                      value={editDraft.sessionsNoteRu}
+                                      onChange={(e) => handleDraftChange("sessionsNoteRu", e.target.value)}
+                                      placeholder="например: 8–12 сеансов"
+                                    />
+                                  </div>
+                                  <div style={s.extraRow}>
+                                    <label style={s.extraLabel}>Примерный срок курса</label>
+                                    <input
+                                      style={s.extraInput}
+                                      value={editDraft.courseTermRu}
+                                      onChange={(e) => handleDraftChange("courseTermRu", e.target.value)}
+                                      placeholder="например: 6–9 месяцев"
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          </React.Fragment>
                         );
                       }
                       const isLegacy = item.serviceKind === "LEGACY_TEMPLATE";
+                      const electroZone = isElectroZone(item);
+                      const nameTooltip = "Информационная зона электроэпиляции. Используется только для отображения на сайте. Запись производится через пакеты времени.";
+                      const priceDurTooltip = "Информационная зона. Цена и длительность не используются.";
                       return (
                         <tr key={item.id} style={isLegacy ? s.trLegacy : s.tr}>
                           <td style={s.td}>
-                            {item.name}
+                            <span title={electroZone ? nameTooltip : undefined} style={s.nameCell}>
+                              {item.name}
+                              {electroZone && <span style={s.infoIcon} title={nameTooltip}>ℹ</span>}
+                            </span>
                             {isLegacy && <span style={s.legacyBadge}>Шаблон</span>}
+                            {electroZone && <span style={s.electroZoneBadge}>Инфо-зона электро</span>}
                           </td>
                           <td style={s.td}>
                             <span style={s.badge}>
@@ -761,11 +875,54 @@ export function AdminServicesPage({ adminUser, onLogout }) {
                           </td>
                           <td style={s.td}>{genderDisplay(item.gender)}</td>
                           <td style={s.td}>{groupKeyDisplay(item.groupKey)}</td>
-                          <td style={s.td}>{item.price != null ? `${item.price} ₽` : "—"}</td>
-                          <td style={s.td}>{item.durationMin != null ? `${item.durationMin} мин` : "—"}</td>
+                          <td style={s.td} title={electroZone ? priceDurTooltip : undefined}>
+                            {electroZone ? "—" : (item.price != null ? `${item.price} ₽` : "—")}
+                          </td>
+                          <td style={s.td} title={electroZone ? priceDurTooltip : undefined}>
+                            {electroZone ? "—" : (item.durationMin != null ? `${item.durationMin} мин` : "—")}
+                          </td>
                           <td style={s.td}>{item.location?.name ?? "—"}</td>
-                          <td style={s.td}>{item.showOnWebsite ? "✅" : "—"}</td>
-                          <td style={s.td}>{item.showInBot ? "✅" : "—"}</td>
+                          <td style={s.td}>
+                            <label style={s.checkboxLabel}>
+                              <input
+                                type="checkbox"
+                                checked={!!item.showOnWebsite}
+                                onChange={() => handleToggle(item, "showOnWebsite")}
+                                disabled={isLegacy || togglingId === item.id}
+                                style={s.checkboxInput}
+                              />
+                            </label>
+                          </td>
+                          <td style={s.td}>
+                            {electroZone ? (
+                              <span style={s.readonlyDash} title="Информационные зоны не показываются в боте.">—</span>
+                            ) : (
+                              <label style={s.checkboxLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!item.showInBot}
+                                  onChange={() => handleToggle(item, "showInBot")}
+                                  disabled={isLegacy || togglingId === item.id}
+                                  style={s.checkboxInput}
+                                />
+                              </label>
+                            )}
+                          </td>
+                          <td style={s.td}>
+                            {electroZone ? (
+                              <span style={s.readonlyDash} title="Информационные зоны не активируются для записи.">—</span>
+                            ) : (
+                              <label style={s.checkboxLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!item.isVisible}
+                                  onChange={() => handleToggle(item, "isVisible")}
+                                  disabled={isLegacy || togglingId === item.id}
+                                  style={s.checkboxInput}
+                                />
+                              </label>
+                            )}
+                          </td>
                           <td style={s.td}>
                             {isLegacy ? (
                               <span style={s.readonlyLabel}>Только чтение</span>
@@ -873,6 +1030,17 @@ const s = {
     marginLeft: "6px", fontSize: "10px", fontWeight: 600, color: "#92400e",
     background: "#fef3c7", padding: "2px 6px", borderRadius: "4px", verticalAlign: "middle",
   },
+  electroZoneBadge: {
+    marginLeft: "6px", fontSize: "10px", fontWeight: 600, color: "#1e40af",
+    background: "#dbeafe", padding: "2px 6px", borderRadius: "4px", verticalAlign: "middle",
+  },
+  infoIcon: {
+    marginLeft: "4px", fontSize: "12px", color: "#6b7280", cursor: "help",
+  },
+  nameCell: { display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: "4px" },
+  readonlyDash: { fontSize: "13px", color: "#9ca3af" },
+  tdWarning: { padding: "12px 14px", background: "#fef3c7", borderBottom: "1px solid #e5e7eb" },
+  warningBox: { fontSize: "13px", color: "#92400e", lineHeight: 1.35 },
   readonlyLabel: {
     fontSize: "11px", fontWeight: 600, color: "#9ca3af",
   },
@@ -914,4 +1082,13 @@ const s = {
     color: "#374151",
   },
   modalActions: { display: "flex", gap: "8px", flexWrap: "wrap" },
+  tdExtra: { padding: "12px 14px", background: "#f0f9ff", borderBottom: "1px solid #e5e7eb" },
+  extraFields: { display: "flex", flexDirection: "column", gap: "12px", maxWidth: "480px" },
+  extraNote: { margin: "0 0 8px", fontSize: "12px", color: "#6b7280", fontStyle: "italic" },
+  extraRow: { display: "flex", flexDirection: "column", gap: "4px" },
+  extraLabel: { fontSize: "11px", fontWeight: 600, color: "#374151" },
+  extraInput: {
+    padding: "6px 10px", border: "1px solid #e5e7eb", borderRadius: "6px",
+    fontSize: "13px", maxWidth: "280px", boxSizing: "border-box",
+  },
 };

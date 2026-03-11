@@ -1,6 +1,13 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { adminLogout, getAdminPackages, updateAdminPackage } from "../api/admin.js";
+import {
+  adminLogout,
+  getAdminPackages,
+  updateAdminPackage,
+  createAdminPackage,
+  getAdminServices,
+  getAdminLocations,
+} from "../api/admin.js";
 
 const CATEGORY_LABELS = {
   LASER: "Лазер",
@@ -32,6 +39,19 @@ const GENDER_FILTER_OPTIONS = [
   { value: "NONE", label: "Без пола" },
 ];
 
+const GENDER_CREATE_OPTIONS = [
+  { value: "FEMALE", label: "Жен" },
+  { value: "MALE", label: "Муж" },
+  { value: "UNISEX", label: "Унисекс" },
+];
+
+const CATEGORY_CREATE_OPTIONS = [
+  { value: "LASER", label: "Лазер" },
+  { value: "WAX", label: "Воск" },
+  { value: "ELECTRO", label: "Электро" },
+  { value: "MASSAGE", label: "Массаж" },
+];
+
 function genderDisplay(gender) {
   if (gender == null) return GENDER_LABELS.NONE;
   return GENDER_LABELS[gender] ?? gender;
@@ -52,6 +72,116 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
   const [editDraft, setEditDraft] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [togglingId, setTogglingId] = useState(null);
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [locations, setLocations] = useState([]);
+  const [builderServices, setBuilderServices] = useState([]);
+  const [createDraft, setCreateDraft] = useState({
+    category: "WAX",
+    gender: "FEMALE",
+    locationId: "",
+    selectedServiceIds: [],
+    name: "",
+    isVisible: true,
+    showOnWebsite: true,
+    showInBot: false,
+  });
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  const openCreateForm = useCallback(async () => {
+    setCreateError("");
+    try {
+      const locs = await getAdminLocations();
+      setLocations(locs);
+      setCreateDraft((prev) => ({
+        ...prev,
+        locationId: locs.length > 0 ? locs[0].id : "",
+        selectedServiceIds: [],
+        name: "",
+      }));
+      setShowCreate(true);
+      setBuilderServices([]);
+    } catch (e) {
+      setCreateError(e.message || "Не удалось загрузить данные");
+    }
+  }, []);
+
+  const loadBuilderServices = useCallback(async () => {
+    if (!createDraft.category || !createDraft.gender || !createDraft.locationId) {
+      setBuilderServices([]);
+      return;
+    }
+    try {
+      const svc = await getAdminServices({
+        category: createDraft.category,
+        gender: createDraft.gender,
+        locationId: createDraft.locationId,
+        serviceKind: "BUSINESS",
+      });
+      setBuilderServices(svc);
+    } catch {
+      setBuilderServices([]);
+    }
+  }, [createDraft.category, createDraft.gender, createDraft.locationId]);
+
+  useEffect(() => {
+    if (showCreate) loadBuilderServices();
+  }, [showCreate, loadBuilderServices]);
+
+  const toggleServiceSelection = (serviceId) => {
+    setCreateDraft((prev) => {
+      const ids = prev.selectedServiceIds.includes(serviceId)
+        ? prev.selectedServiceIds.filter((id) => id !== serviceId)
+        : [...prev.selectedServiceIds, serviceId];
+      const selected = builderServices.filter((s) => ids.includes(s.id));
+      const compositionLabel = selected.map((s) => s.name).join(" + ");
+      return {
+        ...prev,
+        selectedServiceIds: ids,
+        name: compositionLabel || prev.name,
+      };
+    });
+  };
+
+  const handleCreate = async () => {
+    const nameVal = (createDraft.name ?? "").trim();
+    if (!nameVal) { setCreateError("Укажите название"); return; }
+    if (!createDraft.selectedServiceIds.length) { setCreateError("Выберите хотя бы одну услугу"); return; }
+    if (!createDraft.locationId) { setCreateError("Выберите локацию"); return; }
+
+    setCreating(true);
+    setCreateError("");
+    try {
+      await createAdminPackage({
+        name: nameVal,
+        category: createDraft.category,
+        gender: createDraft.gender,
+        locationId: createDraft.locationId,
+        serviceIds: createDraft.selectedServiceIds,
+        isVisible: createDraft.isVisible,
+        showOnWebsite: createDraft.showOnWebsite,
+        showInBot: createDraft.showInBot,
+      });
+      setShowCreate(false);
+      setCreateDraft({
+        category: "WAX",
+        gender: "FEMALE",
+        locationId: "",
+        selectedServiceIds: [],
+        name: "",
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: false,
+      });
+      await loadItems();
+    } catch (e) {
+      setCreateError(e.message || "Не удалось создать комплекс");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -123,6 +253,21 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
     }
   };
 
+  const handleToggle = async (item, field) => {
+    const next = !item[field];
+    setTogglingId(item.id);
+    try {
+      await updateAdminPackage(item.id, { [field]: next });
+      setItems((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, [field]: next } : i))
+      );
+    } catch (e) {
+      setError(e.message || "Не удалось изменить");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const filteredItems = items.filter((item) => {
     if (filterCategory && item.category !== filterCategory) return false;
     if (searchQuery) {
@@ -155,6 +300,7 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
               <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
               <button type="button" onClick={() => navigate("/admin/services")} className="admin-nav-btn">Услуги</button>
               <button type="button" className="admin-nav-btn active">Комплексы</button>
+              <button type="button" onClick={() => navigate("/admin/subscriptions")} className="admin-nav-btn">Абонементы</button>
               <button type="button" onClick={() => navigate("/admin/zones")} className="admin-nav-btn">Зоны</button>
               <button type="button" onClick={() => navigate("/admin/masters")} className="admin-nav-btn">Мастера</button>
             </nav>
@@ -226,7 +372,7 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
               </select>
             </div>
             <div style={s.filterGroup}>
-              <label style={s.filterLabel}>Активность</label>
+              <label style={s.filterLabel}>Активна в системе</label>
               <select
                 value={filterIsVisible}
                 onChange={(e) => setFilterIsVisible(e.target.value)}
@@ -238,10 +384,161 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
               </select>
             </div>
           </div>
-          <button onClick={loadItems} style={s.refreshBtn} disabled={loading}>
-            {loading ? "…" : "Обновить"}
-          </button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button onClick={loadItems} style={s.refreshBtn} disabled={loading}>
+              {loading ? "…" : "Обновить"}
+            </button>
+            <button
+              onClick={openCreateForm}
+              disabled={showCreate}
+              style={{ ...s.refreshBtn, background: "#1a8c3a", color: "#fff", border: "none", fontWeight: 600 }}
+            >
+              Создать комплекс
+            </button>
+          </div>
         </div>
+
+        {showCreate && (
+          <section className="admin-card" style={{ ...s.content, marginBottom: 16, border: "2px solid #1a8c3a" }}>
+            <h3 style={{ margin: "0 0 16px", fontSize: "16px", fontWeight: 700, color: "#111827" }}>Новый комплекс</h3>
+
+            <div style={s.createSection}>
+              <div style={s.createSectionTitle}>1. Параметры</div>
+              <div style={s.createFieldRow}>
+                <div style={s.createField}>
+                  <label style={s.filterLabel}>Тип процедуры</label>
+                  <select
+                    style={s.filterSelect}
+                    value={createDraft.category}
+                    onChange={(e) => setCreateDraft((p) => ({ ...p, category: e.target.value, selectedServiceIds: [] }))}
+                  >
+                    {CATEGORY_CREATE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={s.createField}>
+                  <label style={s.filterLabel}>Пол</label>
+                  <select
+                    style={s.filterSelect}
+                    value={createDraft.gender}
+                    onChange={(e) => setCreateDraft((p) => ({ ...p, gender: e.target.value, selectedServiceIds: [] }))}
+                  >
+                    {GENDER_CREATE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={s.createField}>
+                  <label style={s.filterLabel}>Локация</label>
+                  <select
+                    style={s.filterSelect}
+                    value={createDraft.locationId}
+                    onChange={(e) => setCreateDraft((p) => ({ ...p, locationId: e.target.value, selectedServiceIds: [] }))}
+                  >
+                    {locations.map((loc) => (
+                      <option key={loc.id} value={loc.id}>{loc.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div style={s.createSection}>
+              <div style={s.createSectionTitle}>2. Выбор услуг</div>
+              {builderServices.length === 0 ? (
+                <p style={s.subText}>Выберите тип процедуры, пол и локацию</p>
+              ) : (
+                <div style={s.serviceList}>
+                  {builderServices.map((svc) => (
+                    <label key={svc.id} style={s.serviceCheckItem}>
+                      <input
+                        type="checkbox"
+                        checked={createDraft.selectedServiceIds.includes(svc.id)}
+                        onChange={() => toggleServiceSelection(svc.id)}
+                        style={s.checkboxInput}
+                      />
+                      <span>{svc.name}</span>
+                      <span style={s.serviceMeta}>{svc.durationMin} мин · {svc.price} ₽</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={s.createSection}>
+              <div style={s.createSectionTitle}>3. Предпросмотр</div>
+              {createDraft.selectedServiceIds.length > 0 ? (
+                <>
+                  <p style={s.subText}>
+                    Состав: {builderServices.filter((s) => createDraft.selectedServiceIds.includes(s.id)).map((s) => s.name).join(" + ")}
+                  </p>
+                  <p style={s.subText}>
+                    Цена: {builderServices.filter((s) => createDraft.selectedServiceIds.includes(s.id)).reduce((sum, s) => sum + (s.price || 0), 0)} ₽
+                  </p>
+                  <p style={s.subText}>
+                    Длительность: {builderServices.filter((s) => createDraft.selectedServiceIds.includes(s.id)).reduce((sum, s) => sum + (s.durationMin || 0), 0)} мин
+                  </p>
+                </>
+              ) : (
+                <p style={s.subText}>Выберите услуги</p>
+              )}
+            </div>
+
+            <div style={s.createSection}>
+              <div style={s.createSectionTitle}>4. Название</div>
+              <input
+                style={s.searchInput}
+                value={createDraft.name}
+                onChange={(e) => setCreateDraft((p) => ({ ...p, name: e.target.value }))}
+                placeholder="Бикини + Голени"
+              />
+            </div>
+
+            <div style={s.createSection}>
+              <div style={s.createSectionTitle}>5. Видимость</div>
+              <div style={s.createFieldRow}>
+                <label style={s.toggleLabel}>
+                  <input type="checkbox" style={s.checkboxInput}
+                    checked={createDraft.isVisible}
+                    onChange={(e) => setCreateDraft((p) => ({ ...p, isVisible: e.target.checked }))} />
+                  Активен
+                </label>
+                <label style={s.toggleLabel}>
+                  <input type="checkbox" style={s.checkboxInput}
+                    checked={createDraft.showOnWebsite}
+                    onChange={(e) => setCreateDraft((p) => ({ ...p, showOnWebsite: e.target.checked }))} />
+                  На сайте
+                </label>
+                <label style={s.toggleLabel}>
+                  <input type="checkbox" style={s.checkboxInput}
+                    checked={createDraft.showInBot}
+                    onChange={(e) => setCreateDraft((p) => ({ ...p, showInBot: e.target.checked }))} />
+                  В боте
+                </label>
+              </div>
+            </div>
+
+            {createError && <div style={s.saveError}>{createError}</div>}
+
+            <div style={{ display: "flex", gap: "8px", marginTop: 16 }}>
+              <button
+                onClick={handleCreate}
+                disabled={creating || !createDraft.selectedServiceIds.length}
+                style={{ ...s.actionBtn, background: "#1a8c3a", padding: "8px 20px", fontSize: "13px" }}
+              >
+                {creating ? "Создание…" : "Создать"}
+              </button>
+              <button
+                onClick={() => { setShowCreate(false); setCreateError(""); }}
+                disabled={creating}
+                style={{ ...s.actionBtn, background: "#888", padding: "8px 20px", fontSize: "13px" }}
+              >
+                Отмена
+              </button>
+            </div>
+          </section>
+        )}
 
         <section className="admin-card" style={s.content}>
           {loading ? (
@@ -252,7 +549,7 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
             <p style={s.msg}>
               {filterGender || filterCategory || searchQuery
                 ? "Нет комплексов по выбранному фильтру."
-                : "Нет комплексов (нормализованных)."}
+                : "Нет комплексов."}
             </p>
           ) : (
             <>
@@ -262,13 +559,15 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
                   <thead>
                     <tr>
                       <th style={s.th}>Название</th>
-                      <th style={s.th}>Категория</th>
+                      <th style={s.th}>Состав</th>
+                      <th style={s.th}>Тип процедуры</th>
                       <th style={s.th}>Пол</th>
                       <th style={s.th}>Цена</th>
                       <th style={s.th}>Длительность</th>
                       <th style={s.th}>Локация</th>
                       <th style={s.th}>На сайте</th>
                       <th style={s.th}>В боте</th>
+                      <th style={s.th}>Активна в системе</th>
                       <th style={s.th}>Действия</th>
                     </tr>
                   </thead>
@@ -285,6 +584,11 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
                                 onChange={(e) => handleDraftChange("name", e.target.value)}
                                 placeholder="Название"
                               />
+                            </td>
+                            <td style={s.td}>
+                              <span style={s.compositionText}>
+                                {(item.services ?? []).map((svc) => svc.name).join(" + ") || "—"}
+                              </span>
                             </td>
                             <td style={s.td}>
                               <span style={s.badge}>
@@ -319,8 +623,10 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
                                   onChange={(e) => handleDraftChange("isVisible", e.target.checked)}
                                   style={s.checkboxInput}
                                 />
-                                Видно
+                                Активен
                               </label>
+                            </td>
+                            <td style={s.td}>
                               <input
                                 style={{ ...s.editInputNarrow, marginTop: 4 }}
                                 type="number"
@@ -346,6 +652,11 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
                         <tr key={item.id} style={s.tr}>
                           <td style={s.td}>{item.name}</td>
                           <td style={s.td}>
+                            <span style={s.compositionText}>
+                              {(item.services ?? []).map((svc) => svc.name).join(" + ") || "—"}
+                            </span>
+                          </td>
+                          <td style={s.td}>
                             <span style={s.badge}>
                               {CATEGORY_LABELS[item.category] ?? item.category ?? "—"}
                             </span>
@@ -354,8 +665,39 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
                           <td style={s.td}>{item.price != null ? `${item.price} ₽` : "—"}</td>
                           <td style={s.td}>{item.durationMin != null ? `${item.durationMin} мин` : "—"}</td>
                           <td style={s.td}>{item.location?.name ?? "—"}</td>
-                          <td style={s.td}>{item.showOnWebsite ? "✅" : "—"}</td>
-                          <td style={s.td}>{item.showInBot ? "✅" : "—"}</td>
+                          <td style={s.td}>
+                            <label style={s.checkboxLabel}>
+                              <input
+                                type="checkbox"
+                                checked={!!item.showOnWebsite}
+                                onChange={() => handleToggle(item, "showOnWebsite")}
+                                disabled={togglingId === item.id}
+                                style={s.checkboxInput}
+                              />
+                            </label>
+                          </td>
+                          <td style={s.td}>
+                            <label style={s.checkboxLabel}>
+                              <input
+                                type="checkbox"
+                                checked={!!item.showInBot}
+                                onChange={() => handleToggle(item, "showInBot")}
+                                disabled={togglingId === item.id}
+                                style={s.checkboxInput}
+                              />
+                            </label>
+                          </td>
+                          <td style={s.td}>
+                            <label style={s.checkboxLabel}>
+                              <input
+                                type="checkbox"
+                                checked={!!item.isVisible}
+                                onChange={() => handleToggle(item, "isVisible")}
+                                disabled={togglingId === item.id}
+                                style={s.checkboxInput}
+                              />
+                            </label>
+                          </td>
                           <td style={s.td}>
                             <button
                               type="button"
@@ -450,4 +792,28 @@ const s = {
   saveError: { fontSize: "11px", color: "#b91c1c", marginTop: "4px" },
   readonlyValue: { fontSize: "13px", color: "#374151" },
   readonlyHint: { display: "block", fontSize: "10px", color: "#9ca3af", marginTop: "2px" },
+  compositionText: { fontSize: "12px", color: "#374151", maxWidth: "200px" },
+  createSection: {
+    marginBottom: "24px",
+    padding: "16px",
+    background: "#f8fafc",
+    borderRadius: "8px",
+    border: "1px solid #e5e7eb",
+  },
+  createSectionTitle: { fontSize: "14px", fontWeight: 600, color: "#374151", marginBottom: "12px" },
+  createFieldRow: { display: "flex", flexWrap: "wrap", gap: "16px", alignItems: "flex-end", marginBottom: "12px" },
+  createField: { display: "flex", flexDirection: "column", gap: "4px" },
+  serviceList: { display: "flex", flexDirection: "column", gap: "8px", maxHeight: "200px", overflowY: "auto" },
+  serviceCheckItem: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "8px 12px",
+    background: "#fff",
+    borderRadius: "6px",
+    border: "1px solid #e5e7eb",
+    cursor: "pointer",
+  },
+  serviceMeta: { fontSize: "12px", color: "#6b7280" },
+  toggleLabel: { display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "14px", cursor: "pointer", marginRight: "16px" },
 };

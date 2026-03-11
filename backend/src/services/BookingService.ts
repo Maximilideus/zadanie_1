@@ -1,6 +1,7 @@
 import { Prisma, type BookingStatus as PrismaBookingStatus } from "@prisma/client"
 import { prisma } from "../lib/prisma"
 import { BookingStatusMachine } from "../stateMachines/BookingStatusMachine"
+import { assertElectroServiceBookable } from "./electroBookingGuard"
 
 const SCHEMA_SYNC_MESSAGE =
   "Database schema is not synchronized. Please run prisma migrate."
@@ -102,9 +103,10 @@ export class BookingService {
     const { bookingId } = await this.getPendingBookingByTelegramId(telegramId)
     const service = await prisma.service.findUnique({
       where: { id: serviceId },
-      select: { id: true, locationId: true },
+      select: { id: true, locationId: true, category: true, groupKey: true },
     })
     if (!service) throw new Error("NOT_FOUND")
+    assertElectroServiceBookable(service)
     try {
       return await prisma.booking.update({
         where: { id: bookingId },

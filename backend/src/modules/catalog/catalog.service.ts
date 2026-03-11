@@ -1,14 +1,15 @@
 import type {
   CatalogItemDto,
   CatalogCategorySlug,
-  CatalogGroupedResponse,
+  CatalogGroupedResponseV2,
 } from "./catalog.mapper"
 import {
   mapSlugToCatalogCategory,
   mapCatalogItemToDto,
   mapServiceToDto,
-  mapNormalizedPackageToDto,
-  buildGroupedCatalogResponse,
+  mapPackageToWebsiteDto,
+  mapSubscriptionToWebsiteDto,
+  buildCatalogGroupedResponseV2,
 } from "./catalog.mapper"
 import {
   getDefaultLocationId,
@@ -16,9 +17,9 @@ import {
   findCatalogItemById,
   findServicesByLocationAndCategory,
   findNormalizedPackagesByLocationAndCategory,
+  findSubscriptionsByLocationAndCategory,
   findAllServiceSourceIds,
   findAllNormalizedPackageSourceIds,
-  findCatalogItemGroupKeys,
   findFallbackCatalogItems,
 } from "./catalog.repository"
 
@@ -61,44 +62,47 @@ export async function getCatalogItemById(id: string) {
 
 /**
  * Build grouped catalog response from new business models:
- * - Service (atomic services, replaces CatalogItem ZONE)
- * - normalized Package (replaces CatalogItem PACKAGE, with correct gender variants)
+ * - Services (grouped by gender + groupKey: face/body/intimate/other)
+ * - Packages (separate block, grouped by gender)
+ * - Subscriptions (separate block, grouped by gender)
  * - CatalogItem fallback for INFO/OFFER items not yet migrated to Service
- *
- * Each entity keeps its own gender and is placed in the correct gender bucket.
- * Package variants (female/male/unisex) are separate rows, never merged.
- * Booking links still use CatalogItem IDs via sourceCatalogItemId / sourceLegacyPackageId.
  */
 export async function getCatalogByCategoryGrouped(
   categorySlug: CatalogCategorySlug,
-): Promise<CatalogGroupedResponse> {
+): Promise<CatalogGroupedResponseV2> {
   const locationId = await getDefaultLocationId()
   const category = mapSlugToCatalogCategory(categorySlug)
 
-  const [services, normalizedPackages, allServiceSourceIds, allPackageSourceIds] = await Promise.all([
+  const [
+    services,
+    packages,
+    subscriptions,
+    allServiceSourceIds,
+    allPackageSourceIds,
+  ] = await Promise.all([
     findServicesByLocationAndCategory(locationId, category),
     findNormalizedPackagesByLocationAndCategory(locationId, category),
+    findSubscriptionsByLocationAndCategory(locationId, category),
     findAllServiceSourceIds(locationId, category),
     findAllNormalizedPackageSourceIds(locationId, category),
   ])
 
   const excludeFromFallback = [...allServiceSourceIds, ...allPackageSourceIds]
+  const fallback = await findFallbackCatalogItems(locationId, category, excludeFromFallback)
 
-  const visiblePackageSourceIds = normalizedPackages
-    .map((p) => p.sourceLegacyPackageId)
-    .filter((id): id is string => id !== null)
-
-  const [packageGroupKeyMap, fallbackItems] = await Promise.all([
-    findCatalogItemGroupKeys(visiblePackageSourceIds),
-    findFallbackCatalogItems(locationId, category, excludeFromFallback),
-  ])
-
-  const items: CatalogItemDto[] = [
+  const serviceItems: CatalogItemDto[] = [
     ...services.map(mapServiceToDto),
-    ...normalizedPackages.map((p) => mapNormalizedPackageToDto(p, packageGroupKeyMap)),
-    ...fallbackItems.map(mapCatalogItemToDto),
+    ...fallback.map(mapCatalogItemToDto),
   ]
 
-  return buildGroupedCatalogResponse(categorySlug, items)
+  const packageDtos = packages.map(mapPackageToWebsiteDto)
+  const subscriptionDtos = subscriptions.map(mapSubscriptionToWebsiteDto)
+
+  return buildCatalogGroupedResponseV2(
+    categorySlug,
+    serviceItems,
+    packageDtos,
+    subscriptionDtos,
+  )
 }
 

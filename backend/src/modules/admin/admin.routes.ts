@@ -11,6 +11,9 @@ import type { BookingStatus } from "../booking/booking.status.machine"
 import { sendBookingStatusNotification } from "../../services/bookingNotifications"
 import { getServiceDisplayName } from "../../services/serviceDisplayName"
 import { recalcAffectedPackages } from "../../services/packageAggregateSync"
+import { assertNoDuplicatePackageComposition } from "../../services/packageDuplicateCheck"
+import { assertNoDuplicateSubscription } from "../../services/subscriptionDuplicateCheck"
+import type { CatalogCategory, CatalogGender } from "@prisma/client"
 
 const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/
 function parseSalonDate(dateStr: string): Date {
@@ -41,6 +44,8 @@ const bookingsQuery = z.object({
 const servicesQuery = z.object({
   gender: z.enum(["FEMALE", "MALE", "UNISEX", "NONE"]).optional(),
   serviceKind: z.enum(["BUSINESS", "LEGACY_TEMPLATE"]).optional(),
+  category: z.enum(["LASER", "WAX", "ELECTRO", "MASSAGE"]).optional(),
+  locationId: z.string().uuid().optional(),
 })
 
 const packagesQuery = z.object({
@@ -64,7 +69,7 @@ const catalogPatchBody = z.object({
 
 const catalogCategoryEnum = z.enum(["LASER", "WAX", "ELECTRO", "MASSAGE"])
 const catalogGenderEnum = z.enum(["FEMALE", "MALE", "UNISEX"])
-const groupKeyEnum = z.enum(["face", "body", "intimate", "other"])
+const groupKeyEnum = z.enum(["face", "body", "intimate", "other", "time"])
 
 const servicePatchBody = z.object({
   name: z.string().min(1, "name не может быть пустым").optional(),
@@ -73,6 +78,9 @@ const servicePatchBody = z.object({
   groupKey: groupKeyEnum.nullable().optional(),
   price: z.number().int().min(0, "price >= 0").optional(),
   durationMin: z.number().int().min(1, "durationMin > 0").optional(),
+  sessionDurationLabelRu: z.string().nullable().optional(),
+  sessionsNoteRu: z.string().nullable().optional(),
+  courseTermRu: z.string().nullable().optional(),
   isVisible: z.boolean().optional(),
   showOnWebsite: z.boolean().optional(),
   showInBot: z.boolean().optional(),
@@ -82,6 +90,54 @@ const servicePatchBody = z.object({
 const packagePatchBody = z.object({
   name: z.string().min(1, "name не может быть пустым").optional(),
   gender: catalogGenderEnum.nullable().optional(),
+  isVisible: z.boolean().optional(),
+  showOnWebsite: z.boolean().optional(),
+  showInBot: z.boolean().optional(),
+  sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+})
+
+const packageCreateBody = z.object({
+  name: z.string().min(1, "name обязательно"),
+  category: catalogCategoryEnum,
+  gender: catalogGenderEnum,
+  locationId: z.string().uuid("невалидный locationId"),
+  serviceIds: z.array(z.string().uuid())
+    .min(1, "serviceIds не может быть пустым")
+    .refine((ids) => new Set(ids).size === ids.length, "serviceIds должны быть уникальными"),
+  isVisible: z.boolean().optional(),
+  showOnWebsite: z.boolean().optional(),
+  showInBot: z.boolean().optional(),
+  sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+})
+
+const subscriptionBaseQuery = z.object({
+  category: catalogCategoryEnum,
+  gender: z
+    .union([catalogGenderEnum, z.literal("NONE"), z.literal("")])
+    .optional()
+    .transform((v) => (v === "NONE" || v === "" || v === undefined ? null : v)),
+  locationId: z.string().uuid("невалидный locationId"),
+})
+
+const subscriptionCreateBody = z.object({
+  name: z.string().min(1, "name обязательно"),
+  description: z.string().optional(),
+  baseType: z.enum(["SERVICE", "PACKAGE"]),
+  baseServiceId: z.string().uuid().optional(),
+  basePackageId: z.string().uuid().optional(),
+  quantity: z.number().int().min(1, "quantity >= 1"),
+  discountPercent: z.number().int().min(0).max(100, "discountPercent 0-100"),
+  isVisible: z.boolean().optional(),
+  showOnWebsite: z.boolean().optional(),
+  showInBot: z.boolean().optional(),
+  sortOrder: z.number().int().min(0, "sortOrder >= 0").optional(),
+})
+
+const subscriptionPatchBody = z.object({
+  name: z.string().min(1, "name обязательно").optional(),
+  description: z.string().nullable().optional(),
+  quantity: z.number().int().min(1, "quantity >= 1").optional(),
+  discountPercent: z.number().int().min(0).max(100, "discountPercent 0-100").optional(),
   isVisible: z.boolean().optional(),
   showOnWebsite: z.boolean().optional(),
   showInBot: z.boolean().optional(),
@@ -653,6 +709,8 @@ export async function adminRoutes(app: FastifyInstance) {
     if (q.data.gender !== undefined) {
       where.gender = q.data.gender === "NONE" ? null : q.data.gender
     }
+    if (q.data.category !== undefined) where.category = q.data.category
+    if (q.data.locationId !== undefined) where.locationId = q.data.locationId
     where.serviceKind = q.data.serviceKind ?? "BUSINESS"
     const services = await prisma.service.findMany({
       where: where as any,
@@ -665,6 +723,9 @@ export async function adminRoutes(app: FastifyInstance) {
         groupKey: true,
         durationMin: true,
         price: true,
+        sessionDurationLabelRu: true,
+        sessionsNoteRu: true,
+        courseTermRu: true,
         serviceKind: true,
         isVisible: true,
         showOnWebsite: true,
@@ -684,6 +745,9 @@ export async function adminRoutes(app: FastifyInstance) {
         groupKey: s.groupKey,
         durationMin: s.durationMin,
         price: s.price,
+        sessionDurationLabelRu: s.sessionDurationLabelRu,
+        sessionsNoteRu: s.sessionsNoteRu,
+        courseTermRu: s.courseTermRu,
         serviceKind: s.serviceKind,
         isVisible: s.isVisible,
         showOnWebsite: s.showOnWebsite,
@@ -708,7 +772,10 @@ export async function adminRoutes(app: FastifyInstance) {
       })
     }
     const where: Record<string, unknown> = {
-      sourceLegacyPackageId: { not: null },
+      OR: [
+        { sourceLegacyPackageId: { not: null } },
+        { packageKind: "MANUAL" },
+      ],
     }
     if (q.data.gender !== undefined) {
       where.gender = q.data.gender === "NONE" ? null : q.data.gender
@@ -731,6 +798,10 @@ export async function adminRoutes(app: FastifyInstance) {
         normalizedVariantKey: true,
         sourceLegacyPackageId: true,
         location: { select: { id: true, name: true } },
+        services: {
+          orderBy: { sortOrder: "asc" },
+          select: { service: { select: { id: true, name: true } } },
+        },
       },
     })
     return {
@@ -748,8 +819,518 @@ export async function adminRoutes(app: FastifyInstance) {
         locationId: p.locationId,
         location: p.location,
         normalizedVariantKey: p.normalizedVariantKey,
+        services: p.services.map((ps) => ({ id: ps.service.id, name: ps.service.name })),
       })),
     }
+  })
+
+  app.post("/packages", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = packageCreateBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const { name, category, gender, locationId, serviceIds, isVisible, showOnWebsite, showInBot, sortOrder } = body.data
+
+    try {
+      await assertNoDuplicatePackageComposition({ category, gender, locationId, serviceIds })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ""
+      if (msg.startsWith("DUPLICATE_PACKAGE:")) {
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: msg.replace("DUPLICATE_PACKAGE: ", ""),
+        })
+      }
+      throw e
+    }
+
+    const services = await prisma.service.findMany({
+      where: { id: { in: serviceIds } },
+      select: { id: true, price: true, durationMin: true },
+    })
+
+    if (services.length !== serviceIds.length) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Не все услуги найдены. Проверьте выбранные услуги.",
+      })
+    }
+
+    const price = services.reduce((s, svc) => s + svc.price, 0)
+    const durationMin = services.reduce((s, svc) => s + svc.durationMin, 0)
+
+    const created = await prisma.$transaction(async (tx) => {
+      const pkg = await tx.package.create({
+        data: {
+          name,
+          category,
+          gender,
+          locationId,
+          price,
+          durationMin,
+          packageKind: "MANUAL",
+          sourceLegacyPackageId: null,
+          normalizedVariantKey: null,
+          isVisible: isVisible ?? true,
+          showOnWebsite: showOnWebsite ?? true,
+          showInBot: showInBot ?? false,
+          sortOrder: sortOrder ?? 0,
+        },
+        select: {
+          id: true,
+          name: true,
+          category: true,
+          gender: true,
+          price: true,
+          durationMin: true,
+          isVisible: true,
+          showOnWebsite: true,
+          showInBot: true,
+          sortOrder: true,
+          locationId: true,
+          location: { select: { id: true, name: true } },
+        },
+      })
+
+      for (let i = 0; i < serviceIds.length; i++) {
+        await tx.packageService.create({
+          data: { packageId: pkg.id, serviceId: serviceIds[i], sortOrder: i },
+        })
+      }
+
+      return pkg
+    })
+
+    return reply.status(201).send({
+      package: {
+        id: created.id,
+        name: created.name,
+        category: created.category,
+        gender: created.gender,
+        price: created.price,
+        durationMin: created.durationMin,
+        isVisible: created.isVisible,
+        showOnWebsite: created.showOnWebsite,
+        showInBot: created.showInBot,
+        sortOrder: created.sortOrder,
+        locationId: created.locationId,
+        location: created.location,
+        normalizedVariantKey: null,
+      },
+    })
+  })
+
+  // ── Subscription base selection (for Subscription Builder) ───────
+
+  app.get("/subscription-base-services", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const q = subscriptionBaseQuery.safeParse(request.query)
+    if (!q.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: q.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+    const { category, gender, locationId } = q.data
+    const services = await prisma.service.findMany({
+      where: {
+        serviceKind: "BUSINESS",
+        category,
+        gender,
+        locationId,
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        gender: true,
+        price: true,
+        durationMin: true,
+        locationId: true,
+      },
+    })
+    return { services }
+  })
+
+  app.get("/subscription-base-packages", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const q = subscriptionBaseQuery.safeParse(request.query)
+    if (!q.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: q.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+    const { category, gender, locationId } = q.data
+    const packages = await prisma.package.findMany({
+      where: {
+        category,
+        gender,
+        locationId,
+        packageKind: { in: ["MIGRATED", "MANUAL"] },
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        gender: true,
+        price: true,
+        durationMin: true,
+        locationId: true,
+      },
+    })
+    return { packages }
+  })
+
+  // ── Subscriptions ─────────────────────────────────────────────
+
+  app.get("/subscriptions", {
+    preHandler: adminPreHandlers,
+  }, async () => {
+    const subs = await prisma.subscription.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        gender: true,
+        quantity: true,
+        discountPercent: true,
+        finalPrice: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        baseServiceId: true,
+        basePackageId: true,
+        baseService: { select: { id: true, name: true } },
+        basePackage: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true } },
+      },
+    })
+    return {
+      subscriptions: subs.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        category: s.category,
+        gender: s.gender,
+        quantity: s.quantity,
+        discountPercent: s.discountPercent,
+        finalPrice: s.finalPrice,
+        isVisible: s.isVisible,
+        showOnWebsite: s.showOnWebsite,
+        showInBot: s.showInBot,
+        sortOrder: s.sortOrder,
+        locationId: s.locationId,
+        location: s.location,
+        baseServiceId: s.baseServiceId,
+        basePackageId: s.basePackageId,
+        baseService: s.baseService,
+        basePackage: s.basePackage,
+      })),
+    }
+  })
+
+  app.post("/subscriptions", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = subscriptionCreateBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+
+    const {
+      name,
+      description,
+      baseType,
+      baseServiceId,
+      basePackageId,
+      quantity,
+      discountPercent,
+      isVisible,
+      showOnWebsite,
+      showInBot,
+      sortOrder,
+    } = body.data
+
+    const hasService = baseType === "SERVICE" && baseServiceId
+    const hasPackage = baseType === "PACKAGE" && basePackageId
+    if (!hasService && !hasPackage) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "baseType SERVICE requires baseServiceId; baseType PACKAGE requires basePackageId",
+      })
+    }
+    if (hasService && basePackageId) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "basePackageId must be empty when baseType is SERVICE",
+      })
+    }
+    if (hasPackage && baseServiceId) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "baseServiceId must be empty when baseType is PACKAGE",
+      })
+    }
+
+    const baseServiceIdVal = hasService ? baseServiceId! : null
+    const basePackageIdVal = hasPackage ? basePackageId! : null
+
+    let baseEntity: { name: string; category: CatalogCategory | null; gender: CatalogGender | null; locationId: string; price: number }
+    if (hasService) {
+      const svc = await prisma.service.findUnique({
+        where: { id: baseServiceIdVal! },
+        select: { id: true, name: true, category: true, gender: true, locationId: true, price: true },
+      })
+      if (!svc) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Услуга не найдена",
+        })
+      }
+      baseEntity = svc
+    } else {
+      const pkg = await prisma.package.findUnique({
+        where: { id: basePackageIdVal! },
+        select: { id: true, name: true, category: true, gender: true, locationId: true, price: true },
+      })
+      if (!pkg) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Комплекс не найден",
+        })
+      }
+      baseEntity = pkg
+    }
+
+    if (!baseEntity.category) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Основа должна иметь тип процедуры (category)",
+      })
+    }
+
+    const category: CatalogCategory = baseEntity.category
+    const gender: CatalogGender | null = baseEntity.gender ?? null
+    const locationId = baseEntity.locationId
+
+    const dupInput = {
+      category,
+      gender,
+      locationId,
+      baseServiceId: baseServiceIdVal,
+      basePackageId: basePackageIdVal,
+      quantity,
+      discountPercent,
+    }
+
+    try {
+      await assertNoDuplicateSubscription(dupInput)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ""
+      if (msg.startsWith("DUPLICATE_SUBSCRIPTION:")) {
+        const baseName = baseEntity.name ?? ""
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: `Абонемент с такими параметрами уже существует.\nОснова: ${baseName}.\nКоличество: ${quantity}.\nСкидка: ${discountPercent}%.`,
+        })
+      }
+      throw e
+    }
+
+    const finalPrice = Math.round(
+      baseEntity.price * quantity * (1 - discountPercent / 100),
+    )
+
+    const created = await prisma.subscription.create({
+      data: {
+        name,
+        description: description ?? null,
+        category,
+        gender,
+        locationId,
+        baseServiceId: baseServiceIdVal,
+        basePackageId: basePackageIdVal,
+        quantity,
+        discountPercent,
+        finalPrice,
+        isVisible: isVisible ?? true,
+        showOnWebsite: showOnWebsite ?? true,
+        showInBot: showInBot ?? false,
+        sortOrder: sortOrder ?? 0,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        gender: true,
+        quantity: true,
+        discountPercent: true,
+        finalPrice: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        baseServiceId: true,
+        basePackageId: true,
+        baseService: { select: { id: true, name: true } },
+        basePackage: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true } },
+      },
+    })
+
+    return reply.status(201).send({ subscription: created })
+  })
+
+  app.patch("/subscriptions/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const body = subscriptionPatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+    const existing = await prisma.subscription.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        gender: true,
+        quantity: true,
+        discountPercent: true,
+        finalPrice: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        baseServiceId: true,
+        basePackageId: true,
+        baseService: { select: { id: true, price: true } },
+        basePackage: { select: { id: true, price: true } },
+      },
+    })
+    if (!existing) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Абонемент не найден",
+      })
+    }
+
+    const baseEntity = existing.baseService ?? existing.basePackage
+    if (!baseEntity) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Абонемент без базовой услуги или пакета",
+      })
+    }
+
+    const data: Record<string, unknown> = { ...body.data }
+    const quantity = data.quantity ?? existing.quantity
+    const discountPercent = data.discountPercent ?? existing.discountPercent
+    const qtyOrDiscountChanged =
+      data.quantity !== undefined || data.discountPercent !== undefined
+
+    if (qtyOrDiscountChanged) {
+      try {
+        await assertNoDuplicateSubscription(
+          {
+            category: existing.category,
+            gender: existing.gender,
+            locationId: existing.locationId,
+            baseServiceId: existing.baseServiceId,
+            basePackageId: existing.basePackageId,
+            quantity: quantity as number,
+            discountPercent: discountPercent as number,
+          },
+          id,
+        )
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.startsWith("DUPLICATE_SUBSCRIPTION:")) {
+          return reply.status(409).send({
+            statusCode: 409,
+            error: "Conflict",
+            message: "Уже существует абонемент с таким же составом, количеством и скидкой. Измените количество или скидку.",
+          })
+        }
+        throw err
+      }
+    }
+
+    if (qtyOrDiscountChanged) {
+      const basePrice = baseEntity.price
+      data.finalPrice = Math.round(
+        basePrice * (quantity as number) * (1 - (discountPercent as number) / 100),
+      )
+    }
+
+    const updated = await prisma.subscription.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        category: true,
+        gender: true,
+        quantity: true,
+        discountPercent: true,
+        finalPrice: true,
+        isVisible: true,
+        showOnWebsite: true,
+        showInBot: true,
+        sortOrder: true,
+        locationId: true,
+        baseServiceId: true,
+        basePackageId: true,
+        baseService: { select: { id: true, name: true } },
+        basePackage: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true } },
+      },
+    })
+
+    return reply.send({ subscription: updated })
   })
 
   app.patch("/services/:id", {
@@ -796,6 +1377,9 @@ export async function adminRoutes(app: FastifyInstance) {
         groupKey: true,
         price: true,
         durationMin: true,
+        sessionDurationLabelRu: true,
+        sessionsNoteRu: true,
+        courseTermRu: true,
         isVisible: true,
         showOnWebsite: true,
         showInBot: true,
@@ -821,6 +1405,9 @@ export async function adminRoutes(app: FastifyInstance) {
         groupKey: updated.groupKey,
         price: updated.price,
         durationMin: updated.durationMin,
+        sessionDurationLabelRu: updated.sessionDurationLabelRu,
+        sessionsNoteRu: updated.sessionsNoteRu,
+        courseTermRu: updated.courseTermRu,
         isVisible: updated.isVisible,
         showOnWebsite: updated.showOnWebsite,
         showInBot: updated.showInBot,
@@ -846,7 +1433,7 @@ export async function adminRoutes(app: FastifyInstance) {
     }
     const existing = await prisma.package.findUnique({
       where: { id },
-      select: { id: true, sourceLegacyPackageId: true },
+      select: { id: true, sourceLegacyPackageId: true, packageKind: true },
     })
     if (!existing) {
       return reply.status(404).send({
@@ -855,7 +1442,8 @@ export async function adminRoutes(app: FastifyInstance) {
         message: "Комплекс не найден",
       })
     }
-    if (existing.sourceLegacyPackageId === null) {
+    const isLegacy = existing.sourceLegacyPackageId === null && existing.packageKind !== "MANUAL"
+    if (isLegacy) {
       return reply.status(403).send({
         statusCode: 403,
         error: "Forbidden",

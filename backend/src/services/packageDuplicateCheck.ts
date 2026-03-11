@@ -88,7 +88,7 @@ export async function validatePackageComposition(
  */
 export async function findDuplicatePackageByComposition(
   input: PackageCompositionInput,
-): Promise<{ id: string; name: string } | null> {
+): Promise<{ id: string; name: string; compositionLabel: string } | null> {
   const validation = await validatePackageComposition(input)
   if (!validation.valid) {
     throw new Error(validation.error)
@@ -105,7 +105,10 @@ export async function findDuplicatePackageByComposition(
     select: {
       id: true,
       name: true,
-      services: { select: { serviceId: true } },
+      services: {
+        orderBy: { sortOrder: "asc" },
+        select: { serviceId: true, service: { select: { name: true } } },
+      },
     },
   })
 
@@ -115,7 +118,8 @@ export async function findDuplicatePackageByComposition(
       existingSet.length === targetSet.length &&
       existingSet.every((id, i) => id === targetSet[i])
     ) {
-      return { id: pkg.id, name: pkg.name }
+      const compositionLabel = pkg.services.map((ps) => ps.service.name).join(" + ")
+      return { id: pkg.id, name: pkg.name, compositionLabel }
     }
   }
 
@@ -130,6 +134,11 @@ export async function assertNoDuplicatePackageComposition(
 ): Promise<void> {
   const dup = await findDuplicatePackageByComposition(input)
   if (dup) {
-    throw new Error(`DUPLICATE_PACKAGE: Package "${dup.name}" (${dup.id}) already exists with the same composition`)
+    const compositionText = dup.compositionLabel
+      ? `\nСостав: ${dup.compositionLabel}.`
+      : ""
+    throw new Error(
+      `DUPLICATE_PACKAGE: Комплекс с таким составом уже существует.${compositionText}\nОткройте существующий комплекс и измените его, если нужно.`,
+    )
   }
 }

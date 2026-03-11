@@ -64,7 +64,9 @@ export type CatalogItemDto = {
   title: string
   subtitle: string | null
   description: string | null
+  sessionDurationLabelRu: string | null
   sessionsNoteRu: string | null
+  courseTermRu: string | null
   price: number | null
   durationMin: number | null
 }
@@ -93,7 +95,9 @@ export function mapCatalogItemToDto(item: CatalogItemRecord): CatalogItemDto {
     title: item.titleRu,
     subtitle: item.subtitleRu,
     description: item.descriptionRu,
+    sessionDurationLabelRu: null,
     sessionsNoteRu: item.sessionsNoteRu ?? null,
+    courseTermRu: null,
     price,
     durationMin,
   }
@@ -109,6 +113,50 @@ export type CatalogGroupedResponse = {
   sections: GroupedSections
 }
 
+// ── New website structure: services / packages / subscriptions ────
+
+export type ServiceWebsiteDto = CatalogItemDto
+
+export type PackageWebsiteDto = {
+  id: string
+  type: "package"
+  name: string
+  compositionLabel: string
+  durationMin: number | null
+  price: number | null
+  gender: CatalogGender | null
+}
+
+export type SubscriptionWebsiteDto = {
+  id: string
+  type: "subscription"
+  name: string
+  baseType: "SERVICE" | "PACKAGE"
+  baseName: string
+  baseCompositionLabel: string | null
+  quantity: number
+  discountPercent: number
+  singleSessionDurationMin: number | null
+  totalDurationMin: number | null
+  finalPrice: number
+  gender: CatalogGender | null
+}
+
+export type ServicesGrouped = Partial<
+  Record<GenderBucketKey, Record<string, { title: string; items: ServiceWebsiteDto[] }>>
+>
+
+export type GenderGrouped<T> = Partial<Record<GenderBucketKey, T[]>>
+
+export type CatalogGroupedResponseV2 = {
+  category: CatalogCategorySlug
+  services: ServicesGrouped
+  packages: GenderGrouped<PackageWebsiteDto>
+  subscriptions: GenderGrouped<SubscriptionWebsiteDto>
+  /** @deprecated Legacy shape for Telegram bot. Use services/packages/subscriptions. */
+  sections: GroupedSections
+}
+
 // ── New-model → DTO mappers for website price list ────────────
 
 type ServiceRecord = {
@@ -117,6 +165,9 @@ type ServiceRecord = {
   gender: CatalogGender | null
   groupKey: string | null
   description: string | null
+  sessionDurationLabelRu: string | null
+  sessionsNoteRu: string | null
+  courseTermRu: string | null
   price: number
   durationMin: number
   sourceCatalogItemId: string | null
@@ -126,17 +177,28 @@ type ServiceRecord = {
  * Map a Service row to CatalogItemDto.
  * Uses sourceCatalogItemId as the DTO id so existing Telegram booking links
  * (which reference CatalogItem) keep working.
+ * For ELECTRO zone items (groupKey !== "time"): subtitle uses sessionDurationLabelRu for display.
+ * For ELECTRO time items: subtitle uses durationMin.
  */
 export function mapServiceToDto(svc: ServiceRecord): CatalogItemDto {
+  const isElectroZone = svc.groupKey !== "time"
+  const subtitle =
+    isElectroZone && svc.sessionDurationLabelRu?.trim()
+      ? svc.sessionDurationLabelRu
+      : svc.durationMin != null
+        ? `${svc.durationMin} мин`
+        : null
   return {
     id: svc.sourceCatalogItemId ?? svc.id,
     type: "ZONE",
     gender: svc.gender,
     groupKey: svc.groupKey,
     title: svc.name,
-    subtitle: svc.durationMin != null ? `${svc.durationMin} мин` : null,
+    subtitle,
     description: svc.description,
-    sessionsNoteRu: null,
+    sessionDurationLabelRu: svc.sessionDurationLabelRu ?? null,
+    sessionsNoteRu: svc.sessionsNoteRu ?? null,
+    courseTermRu: svc.courseTermRu ?? null,
     price: svc.price,
     durationMin: svc.durationMin,
   }
@@ -173,7 +235,9 @@ export function mapNormalizedPackageToDto(
     title: pkg.name,
     subtitle: pkg.durationMin != null ? `${pkg.durationMin} мин` : null,
     description: pkg.description,
+    sessionDurationLabelRu: null,
     sessionsNoteRu: null,
+    courseTermRu: null,
     price: pkg.price,
     durationMin: pkg.durationMin,
   }
@@ -220,5 +284,154 @@ export function buildGroupedCatalogResponse(
   }
 
   return { category, sections }
+}
+
+// ── Package → PackageWebsiteDto ───────────────────────────────────
+
+type PackageRecordWithServices = {
+  id: string
+  name: string
+  gender: CatalogGender | null
+  price: number
+  durationMin: number
+  sourceLegacyPackageId: string | null
+  services: { service: { name: string } }[]
+}
+
+export function mapPackageToWebsiteDto(
+  pkg: PackageRecordWithServices,
+): PackageWebsiteDto {
+  const compositionLabel =
+    pkg.services.length > 0
+      ? pkg.services.map((s) => s.service.name).join(" + ")
+      : pkg.name
+  return {
+    id: pkg.sourceLegacyPackageId ?? pkg.id,
+    type: "package",
+    name: pkg.name,
+    compositionLabel,
+    durationMin: pkg.durationMin,
+    price: pkg.price,
+    gender: pkg.gender,
+  }
+}
+
+// ── Subscription → SubscriptionWebsiteDto ────────────────────────
+
+type SubscriptionRecord = {
+  id: string
+  name: string
+  gender: CatalogGender | null
+  quantity: number
+  discountPercent: number
+  finalPrice: number
+  baseServiceId: string | null
+  basePackageId: string | null
+  baseService: { name: string; durationMin: number } | null
+  basePackage: {
+    name: string
+    durationMin: number
+    services: { service: { name: string } }[]
+  } | null
+}
+
+export function mapSubscriptionToWebsiteDto(
+  sub: SubscriptionRecord,
+): SubscriptionWebsiteDto {
+  const baseType = sub.baseServiceId ? "SERVICE" : "PACKAGE"
+  const baseName = sub.baseService?.name ?? sub.basePackage?.name ?? ""
+  const baseCompositionLabel =
+    sub.basePackage?.services?.length
+      ? sub.basePackage.services.map((s) => s.service.name).join(" + ")
+      : null
+  const singleSessionDurationMin =
+    sub.baseService?.durationMin ?? sub.basePackage?.durationMin ?? null
+  const totalDurationMin =
+    singleSessionDurationMin != null
+      ? singleSessionDurationMin * sub.quantity
+      : null
+
+  return {
+    id: sub.id,
+    type: "subscription",
+    name: sub.name,
+    baseType,
+    baseName,
+    baseCompositionLabel,
+    quantity: sub.quantity,
+    discountPercent: sub.discountPercent,
+    singleSessionDurationMin,
+    totalDurationMin,
+    finalPrice: sub.finalPrice,
+    gender: sub.gender,
+  }
+}
+
+// ── Build V2 grouped response ────────────────────────────────────
+
+export function buildCatalogGroupedResponseV2(
+  category: CatalogCategorySlug,
+  serviceItems: CatalogItemDto[],
+  packages: PackageWebsiteDto[],
+  subscriptions: SubscriptionWebsiteDto[],
+): CatalogGroupedResponseV2 {
+  const buckets: GenderBucketKey[] = ["female", "male", "unisex"]
+
+  const servicesGrouped: ServicesGrouped = {}
+  for (const b of buckets) {
+    servicesGrouped[b] = {}
+  }
+  for (const item of serviceItems) {
+    const genderKey = genderToBucketKey(item.gender)
+    const groupKey = item.groupKey ?? "other"
+    const map = servicesGrouped[genderKey]!
+    if (!map[groupKey]) map[groupKey] = { title: groupKeyToTitleRu(groupKey), items: [] }
+    map[groupKey].items.push(item)
+  }
+
+  const packagesGrouped: GenderGrouped<PackageWebsiteDto> = {}
+  for (const b of buckets) {
+    packagesGrouped[b] = []
+  }
+  for (const pkg of packages) {
+    const genderKey = genderToBucketKey(pkg.gender)
+    packagesGrouped[genderKey]!.push(pkg)
+  }
+
+  const subscriptionsGrouped: GenderGrouped<SubscriptionWebsiteDto> = {}
+  for (const b of buckets) {
+    subscriptionsGrouped[b] = []
+  }
+  for (const sub of subscriptions) {
+    const genderKey = genderToBucketKey(sub.gender)
+    subscriptionsGrouped[genderKey]!.push(sub)
+  }
+
+  const legacyItems: CatalogItemDto[] = [
+    ...serviceItems,
+    ...packages.map((p) => ({
+      id: p.id,
+      type: "PACKAGE" as const,
+      gender: p.gender,
+      groupKey: "other" as string | null,
+      title: p.name,
+      subtitle: p.durationMin != null ? `${p.durationMin} мин` : null,
+      description: p.compositionLabel,
+      sessionDurationLabelRu: null,
+      sessionsNoteRu: null,
+      courseTermRu: null,
+      price: p.price,
+      durationMin: p.durationMin,
+    })),
+  ]
+  const sections = buildGroupedCatalogResponse(category, legacyItems).sections
+
+  return {
+    category,
+    services: servicesGrouped,
+    packages: packagesGrouped,
+    subscriptions: subscriptionsGrouped,
+    sections,
+  }
 }
 

@@ -96,6 +96,9 @@ export async function findServicesByLocationAndCategory(
       gender: true,
       groupKey: true,
       description: true,
+      sessionDurationLabelRu: true,
+      sessionsNoteRu: true,
+      courseTermRu: true,
       price: true,
       durationMin: true,
       sortOrder: true,
@@ -114,7 +117,7 @@ export async function findNormalizedPackagesByLocationAndCategory(
       category,
       isVisible: true,
       showOnWebsite: true,
-      sourceLegacyPackageId: { not: null },
+      packageKind: { in: ["MIGRATED", "MANUAL"] },
     },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     select: {
@@ -128,6 +131,50 @@ export async function findNormalizedPackagesByLocationAndCategory(
       sortOrder: true,
       sourceLegacyPackageId: true,
       normalizedVariantKey: true,
+      services: {
+        orderBy: { sortOrder: "asc" },
+        select: { service: { select: { name: true } } },
+      },
+    },
+  })
+}
+
+export async function findSubscriptionsByLocationAndCategory(
+  locationId: string,
+  category: CatalogCategory,
+) {
+  return prisma.subscription.findMany({
+    where: {
+      locationId,
+      category,
+      isVisible: true,
+      showOnWebsite: true,
+    },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      gender: true,
+      quantity: true,
+      discountPercent: true,
+      finalPrice: true,
+      baseServiceId: true,
+      basePackageId: true,
+      baseService: {
+        select: { id: true, name: true, durationMin: true },
+      },
+      basePackage: {
+        select: {
+          id: true,
+          name: true,
+          durationMin: true,
+          services: {
+            orderBy: { sortOrder: "asc" },
+            select: { service: { select: { name: true } } },
+          },
+        },
+      },
     },
   })
 }

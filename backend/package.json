@@ -21,7 +21,8 @@
     "rebuild-package-services:verify": "ts-node scripts/rebuild-package-services.ts verify",
     "create-normalized-packages:dry-run": "ts-node scripts/create-normalized-packages.ts dry-run",
     "create-normalized-packages:apply": "ts-node scripts/create-normalized-packages.ts apply",
-    "create-normalized-packages:verify": "ts-node scripts/create-normalized-packages.ts verify"
+    "create-normalized-packages:verify": "ts-node scripts/create-normalized-packages.ts verify",
+    "verify-subscription-duplicate-check": "ts-node scripts/verify-subscription-duplicate-check.ts"
   },
   "keywords": [],
   "author": "",

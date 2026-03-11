@@ -1,6 +1,7 @@
 import { DateTime } from "luxon"
 import { prisma } from "../lib/prisma"
 import { SALON_TIMEZONE } from "../config/salon"
+import { assertElectroServiceBookable } from "./electroBookingGuard"
 
 const SLOT_STEP_MINUTES = 15
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
@@ -46,9 +47,10 @@ export async function getAvailableSlots(
 
   const service = await prisma.service.findUnique({
     where: { id: serviceId },
-    select: { durationMin: true, locationId: true },
+    select: { durationMin: true, locationId: true, category: true, groupKey: true },
   })
   if (!service) throw new Error("NOT_FOUND")
+  assertElectroServiceBookable(service)
   const timezone = SALON_TIMEZONE
   const locationId = service.locationId
   const durationMin = service.durationMin

@@ -5035,6 +5035,22 @@ body {
   display: grid; grid-template-columns: 1fr 100px 110px; gap: 12px; padding: 12px 20px;
   border-bottom: 1px solid var(--accent-faint); align-items: center; transition: background var(--transition);
 }
+
+/* Packages block: Название | Состав | Время | Цена */
+.lp-price-table--packages .lp-price-header,
+.lp-price-table--packages .lp-price-row {
+  grid-template-columns: minmax(120px, 1fr) minmax(140px, 1.2fr) 80px 100px;
+  gap: 16px;
+}
+.lp-price-table--packages .lp-price-val { text-align: right; min-width: 0; }
+
+/* Subscriptions block: Название | Детали | Цена */
+.lp-price-table--subscriptions .lp-price-header,
+.lp-price-table--subscriptions .lp-price-row {
+  grid-template-columns: minmax(140px, 1fr) minmax(260px, 2.5fr) 100px;
+  gap: 16px;
+}
+.lp-price-table--subscriptions .lp-price-val { text-align: right; min-width: 0; }
 .lp-price-row:last-child { border-bottom: none; }
 .lp-price-row:hover { background: var(--accent-faint); }
 
@@ -5103,7 +5119,7 @@ a.lp-price-row--bookable:hover .lp-price-val { color: var(--accent); }
 /* Section intro */
 .lp-section-intro { font-size: 15px; color: var(--ink-muted); line-height: 1.7; margin: 0 0 28px; max-width: 720px; }
 
-/* Zone table (ElectroPage) */
+/* Zone table (ElectroPage) - legacy, kept for compatibility */
 .lp-zone-table { border: 1.5px solid var(--accent-light); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 24px; }
 
 .lp-zone-table-header {
@@ -5126,6 +5142,37 @@ a.lp-price-row--bookable:hover .lp-price-val { color: var(--accent); }
   .lp-zone-table-header,
   .lp-zone-table-row { grid-template-columns: 1fr 120px; }
   .lp-zone-table-header span:nth-child(2), .lp-zone-table-time { display: none; }
+}
+
+/* Electro informational zones table (4 columns: zone, time, sessions, course) */
+.lp-electro-info-table { border: 1.5px solid var(--accent-light); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 24px; }
+
+.lp-electro-info-header {
+  display: grid; grid-template-columns: minmax(140px, 1fr) 120px 130px 150px; gap: 12px; padding: 12px 20px;
+  background: var(--primary-deep); font-size: 12px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: rgba(255,255,255,0.8);
+}
+
+.lp-electro-info-row {
+  display: grid; grid-template-columns: minmax(140px, 1fr) 120px 130px 150px; gap: 12px; padding: 12px 20px;
+  border-bottom: 1px solid var(--accent-faint); align-items: center; transition: background var(--transition);
+}
+.lp-electro-info-row:last-child { border-bottom: none; }
+.lp-electro-info-row:hover { background: var(--accent-faint); }
+.lp-electro-info-zone { font-size: 14px; color: var(--ink); }
+.lp-electro-info-time { font-size: 13px; color: var(--ink-muted); }
+.lp-electro-info-sessions { font-size: 13px; font-weight: 600; color: var(--primary-deep); }
+.lp-electro-info-course { font-size: 13px; color: var(--ink-muted); }
+
+@media (max-width: 700px) {
+  .lp-electro-info-header,
+  .lp-electro-info-row { grid-template-columns: 1fr 100px 110px; }
+  .lp-electro-info-header span:nth-child(4), .lp-electro-info-course { display: none; }
+}
+@media (max-width: 500px) {
+  .lp-electro-info-header,
+  .lp-electro-info-row { grid-template-columns: 1fr 90px; }
+  .lp-electro-info-header span:nth-child(3), .lp-electro-info-sessions { display: none; }
 }
 
 /* Electro price grid */

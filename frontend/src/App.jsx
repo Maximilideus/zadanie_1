@@ -9,6 +9,7 @@ import { AdminBookingsPage } from "./pages/AdminBookingsPage.jsx";
 import { AdminCatalogPage } from "./pages/AdminCatalogPage.jsx";
 import { AdminServicesPage } from "./pages/AdminServicesPage.jsx";
 import { AdminPackagesPage } from "./pages/AdminPackagesPage.jsx";
+import { AdminSubscriptionsPage } from "./pages/AdminSubscriptionsPage.jsx";
 import { AdminMastersPage } from "./pages/AdminMastersPage.jsx";
 import { AdminZonesPage } from "./pages/AdminZonesPage.jsx";
 import { getAdminMe, getAdminToken } from "./api/admin.js";
@@ -98,6 +99,14 @@ export function App() {
           element={
             <AdminGuard adminUser={adminUser}>
               <AdminPackagesPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/subscriptions"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminSubscriptionsPage adminUser={adminUser} onLogout={handleLogout} />
             </AdminGuard>
           }
         />

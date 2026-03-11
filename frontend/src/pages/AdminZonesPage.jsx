@@ -160,6 +160,7 @@ export function AdminZonesPage({ adminUser, onLogout }) {
               {navBtn("/admin/catalog", "Каталог", false)}
               {navBtn("/admin/services", "Услуги", false)}
               {navBtn("/admin/packages", "Комплексы", false)}
+              {navBtn("/admin/subscriptions", "Абонементы", false)}
               {navBtn("/admin/zones", "Зоны", true)}
               {navBtn("/admin/masters", "Мастера", false)}
             </nav>

@@ -225,6 +225,8 @@ export async function getAdminServices(params = {}) {
   const qs = new URLSearchParams();
   if (params.gender) qs.set("gender", params.gender);
   if (params.serviceKind) qs.set("serviceKind", params.serviceKind);
+  if (params.category) qs.set("category", params.category);
+  if (params.locationId) qs.set("locationId", params.locationId);
 
   const url = `${API_BASE}/admin/services${qs.toString() ? `?${qs}` : ""}`;
   const res = await fetch(url, { headers: authHeaders() });
@@ -269,6 +271,21 @@ export async function getAdminPackages(params = {}) {
   return data.packages ?? [];
 }
 
+export async function createAdminPackage(fields) {
+  const res = await fetch(`${API_BASE}/admin/packages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось создать комплекс");
+  }
+
+  return res.json();
+}
+
 export async function updateAdminPackage(id, fields) {
   const res = await fetch(`${API_BASE}/admin/packages/${id}`, {
     method: "PATCH",
@@ -308,6 +325,89 @@ export async function updateAdminCatalogItem(id, fields) {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.message || "Не удалось сохранить изменения");
+  }
+
+  return res.json();
+}
+
+export async function getAdminSubscriptionBaseServices(params) {
+  const qs = new URLSearchParams();
+  if (params.category) qs.set("category", params.category);
+  if (params.gender != null) qs.set("gender", params.gender === "NONE" ? "NONE" : params.gender);
+  if (params.locationId) qs.set("locationId", params.locationId);
+
+  const url = `${API_BASE}/admin/subscription-base-services?${qs}`;
+  const res = await fetch(url, { headers: authHeaders() });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить услуги");
+  }
+
+  const data = await res.json();
+  return data.services ?? [];
+}
+
+export async function getAdminSubscriptionBasePackages(params) {
+  const qs = new URLSearchParams();
+  if (params.category) qs.set("category", params.category);
+  if (params.gender != null) qs.set("gender", params.gender === "NONE" ? "NONE" : params.gender);
+  if (params.locationId) qs.set("locationId", params.locationId);
+
+  const url = `${API_BASE}/admin/subscription-base-packages?${qs}`;
+  const res = await fetch(url, { headers: authHeaders() });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить комплексы");
+  }
+
+  const data = await res.json();
+  return data.packages ?? [];
+}
+
+export async function getAdminSubscriptions() {
+  const res = await fetch(`${API_BASE}/admin/subscriptions`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить абонементы");
+  }
+
+  const data = await res.json();
+  return data.subscriptions ?? [];
+}
+
+export async function createAdminSubscription(fields) {
+  const res = await fetch(`${API_BASE}/admin/subscriptions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось создать абонемент");
+  }
+
+  return res.json();
+}
+
+export async function updateAdminSubscription(id, fields) {
+  const res = await fetch(`${API_BASE}/admin/subscriptions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg = data.message || "Не удалось сохранить абонемент";
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
   }
 
   return res.json();

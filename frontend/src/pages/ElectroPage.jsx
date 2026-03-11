@@ -308,14 +308,14 @@ export function ElectroPage({ botUrl }) {
         </div>
       </section>
 
-      {/* ── Зоны ── */}
+      {/* ── SECTION A: Информационная таблица зон (не прайс) ── */}
       <section className="service-section" ref={refZones}>
         <div className={`service-section-inner fade-in-up ${visibleZones ? "visible" : ""}`}>
           <span className="lp-tag">Зоны и сроки</span>
           <h2 className="service-h2">Для каких зон подходит</h2>
           <p className="lp-section-intro">
             Электроэпиляция оптимальна для небольших зон и финальной доработки. 
-            Ниже — ориентировочное время сеанса и количество процедур для каждой зоны. 
+            Ниже — ориентировочное время сеанса, количество процедур и срок курса для каждой зоны. 
             Точные цифры зависят от плотности волос и индивидуальных особенностей.
           </p>
           {catalogLoading && <p className="lp-catalog-loading">Загрузка…</p>}
@@ -323,25 +323,34 @@ export function ElectroPage({ botUrl }) {
           {!catalogLoading && !catalogError && getZoneAndInfoGroups(catalogData?.sections).map(({ groupKey, title, items }) => (
             <div key={groupKey} className="lp-catalog-group">
               <h3 className="lp-catalog-group-title">{title}</h3>
-              <div className="lp-zone-table">
-                <div className="lp-zone-table-header">
-                  <span>ЗОНА / ПРОЦЕДУРА</span>
-                  <span>Время / сеанс</span>
-                  <span>Кол-во сеансов / примечание</span>
+              <div className="lp-electro-info-table">
+                <div className="lp-electro-info-header">
+                  <span>Зона / процедура</span>
+                  <span>Время за 1 сеанс</span>
+                  <span>Обычно нужно</span>
+                  <span>Примерный срок курса</span>
                 </div>
                 {items.map((item) => {
-                  const { price, durationMin } = getCatalogItemPriceAndDuration(item);
                   const isPostLaserRow = item.title === "Финальная доработка после лазера";
                   const zoneDisplayTitle = isPostLaserRow ? "Доработка волос после лазерной депиляции" : item.title;
-                  let timeLabel = item.subtitle ?? (durationMin != null ? `${durationMin} мин` : "—");
-                  if (isPostLaserRow && timeLabel === "—") timeLabel = "определяется на ОЧНОЙ консультации";
-                  let sessionsLabel = (item.sessionsNoteRu && item.sessionsNoteRu.trim()) ? item.sessionsNoteRu : "—";
-                  if (isPostLaserRow && sessionsLabel === "—") sessionsLabel = "индивидуально";
+                  // Use display-only sessionDurationLabelRu for zone info table (not runtime durationMin)
+                  const timeLabelRaw = (item.sessionDurationLabelRu && item.sessionDurationLabelRu.trim())
+                    ? item.sessionDurationLabelRu
+                    : (item.subtitle && item.subtitle.trim())
+                      ? item.subtitle
+                      : null;
+                  let timeLabel = timeLabelRaw ?? "—";
+                  if (isPostLaserRow && timeLabel === "—") timeLabel = "определяется на очной консультации";
+                  const sessionsLabel = (item.sessionsNoteRu && item.sessionsNoteRu.trim()) ? item.sessionsNoteRu : "—";
+                  const courseLabel = (item.courseTermRu && item.courseTermRu.trim()) ? item.courseTermRu : "—";
+                  const sessionsDisplay = isPostLaserRow && sessionsLabel === "—" ? "индивидуально" : sessionsLabel;
+                  const courseDisplay = isPostLaserRow && courseLabel === "—" ? "индивидуально" : courseLabel;
                   return (
-                    <div className="lp-zone-table-row" key={item.id}>
-                      <span className="lp-zone-table-zone">{zoneDisplayTitle}</span>
-                      <span className="lp-zone-table-time">{timeLabel}</span>
-                      <span className="lp-zone-table-sessions">{sessionsLabel}</span>
+                    <div className="lp-electro-info-row" key={item.id}>
+                      <span className="lp-electro-info-zone">{zoneDisplayTitle}</span>
+                      <span className="lp-electro-info-time">{timeLabel}</span>
+                      <span className="lp-electro-info-sessions">{sessionsDisplay}</span>
+                      <span className="lp-electro-info-course">{courseDisplay}</span>
                     </div>
                   );
                 })}
@@ -356,14 +365,14 @@ export function ElectroPage({ botUrl }) {
         </div>
       </section>
 
-      {/* ── Цены ── */}
+      {/* ── SECTION B + C + D: Цены по времени (кликабельный прайс) ── */}
       <section className="service-section" ref={refPrice}>
         <div className={`service-section-inner fade-in-up ${visiblePrice ? "visible" : ""}`}>
           <span className="lp-tag">Стоимость</span>
           <h2 className="service-h2">Прайс-лист</h2>
           <p className="lp-price-note-top">
-            Электроэпиляция тарифицируется по времени — это честнее, 
-            чем цена «за зону», потому что плотность волос у всех разная.
+            Электроэпиляция тарифицируется <strong>по времени</strong>, а не по зоне — 
+            плотность волос у всех разная, поэтому это честнее.
           </p>
           <p className="lp-price-note-top">
             Прайс-лист кликабельный. Нажмите на нужный пакет времени, чтобы быстро перейти в Telegram-бот и записаться без консультации. Если нужна консультация или подбор времени — воспользуйтесь кнопкой под прайс-листом.

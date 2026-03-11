@@ -281,6 +281,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
               <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
               <button type="button" onClick={() => navigate("/admin/services")} className="admin-nav-btn">Услуги</button>
               <button type="button" onClick={() => navigate("/admin/packages")} className="admin-nav-btn">Комплексы</button>
+              <button type="button" onClick={() => navigate("/admin/subscriptions")} className="admin-nav-btn">Абонементы</button>
               <button type="button" onClick={() => navigate("/admin/zones")} className="admin-nav-btn">Зоны</button>
               <button type="button" className="admin-nav-btn active">Мастера</button>
             </nav>

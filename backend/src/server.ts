@@ -276,6 +276,14 @@ app.setErrorHandler((error, request, reply) => {
     })
   }
 
+  if (err.message === "ELECTRO_ZONE_NOT_BOOKABLE") {
+    return reply.status(400).send({
+      statusCode: 400,
+      error: "Bad Request",
+      message: "ELECTRO zones cannot be booked. Use time-based electro services.",
+    })
+  }
+
   if (err.message === "NOT_FOUND") {
     return reply.status(404).send({
       statusCode: 404,

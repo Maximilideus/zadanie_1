@@ -89,6 +89,12 @@ model Service {
   /// Stable semantic zone identity (e.g. "armpits", "lower-legs"). Same zone across genders shares the same zoneKey.
   zoneKey     String?
   description String?
+  /// Electro page 2nd column (display-only): session time label (e.g. "15 мин"). NOT used for booking.
+  sessionDurationLabelRu String?
+  /// Electro page 3rd column: "Кол-во сеансов / примечание" (e.g. "8–12 сеансов")
+  sessionsNoteRu String?
+  /// Electro page 4th column: approximate course duration (e.g. "6–9 месяцев")
+  courseTermRu String?
   serviceKind   ServiceKind @default(BUSINESS)
   isVisible     Boolean @default(true)
   isBookable    Boolean @default(true)
@@ -214,6 +220,8 @@ model Subscription {
   discountPercent Int   @default(0)
   finalPrice    Int     @default(0)
   isVisible    Boolean @default(true)
+  showOnWebsite Boolean @default(true)
+  showInBot     Boolean @default(false)
   sortOrder     Int     @default(0)
 
   locationId String
