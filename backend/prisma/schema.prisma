@@ -341,10 +341,36 @@ enum BookingStatus {
   COMPLETED
 }
 
+enum BookingSource {
+  BOT
+  ADMIN
+}
+
+model Customer {
+  id               String   @id @default(uuid())
+  name             String
+  phone            String?  @unique
+  telegramId       String?  @unique
+  telegramUsername String?
+  telegramFirstName String?
+  telegramLastName  String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  bookings Booking[]
+
+  @@index([phone])
+  @@index([telegramId])
+}
+
 model Booking {
   id          String        @id @default(uuid())
   userId      String
   user        User          @relation(fields: [userId], references: [id])
+  customerId  String?
+  customer    Customer?     @relation(fields: [customerId], references: [id])
+  source      BookingSource?
   serviceId   String?
   packageId   String?
   masterId    String?
@@ -365,6 +391,7 @@ model Booking {
   package Package? @relation(fields: [packageId], references: [id])
 
   @@index([userId])
+  @@index([customerId])
   @@index([status])
   @@index([scheduledAt])
   @@index([expiresAt])

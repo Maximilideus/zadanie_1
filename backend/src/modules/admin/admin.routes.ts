@@ -13,6 +13,7 @@ import { getServiceDisplayName } from "../../services/serviceDisplayName"
 import { recalcAffectedPackages } from "../../services/packageAggregateSync"
 import { assertNoDuplicatePackageComposition } from "../../services/packageDuplicateCheck"
 import { assertNoDuplicateSubscription } from "../../services/subscriptionDuplicateCheck"
+import { normalizePhone } from "../../lib/phoneNormalize"
 import type { CatalogCategory, CatalogGender } from "@prisma/client"
 
 const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/
@@ -234,20 +235,29 @@ export async function adminRoutes(app: FastifyInstance) {
         cancelledAt: true,
         completedAt: true,
         userId: true,
+        customerId: true,
+        source: true,
         serviceId: true,
         masterId: true,
       },
     })
 
     const userIds = [...new Set(bookings.map((b) => b.userId))]
+    const customerIds = [...new Set(bookings.map((b) => b.customerId).filter(Boolean) as string[])]
     const serviceIds = [...new Set(bookings.map((b) => b.serviceId).filter(Boolean) as string[])]
     const masterIds = [...new Set(bookings.map((b) => b.masterId).filter(Boolean) as string[])]
 
-    const [users, services, masters] = await Promise.all([
+    const [users, customers, services, masters] = await Promise.all([
       prisma.user.findMany({
         where: { id: { in: userIds } },
         select: { id: true, name: true, email: true, telegramId: true },
       }),
+      customerIds.length > 0
+        ? prisma.customer.findMany({
+            where: { id: { in: customerIds } },
+            select: { id: true, name: true, phone: true, telegramId: true },
+          })
+        : [],
       serviceIds.length > 0
         ? prisma.service.findMany({
             where: { id: { in: serviceIds } },
@@ -263,13 +273,21 @@ export async function adminRoutes(app: FastifyInstance) {
     ])
 
     const userMap = Object.fromEntries(users.map((u) => [u.id, u]))
+    const customerMap = Object.fromEntries(customers.map((c) => [c.id, c]))
     const serviceMap = Object.fromEntries(services.map((s) => [s.id, s]))
     const masterMap = Object.fromEntries(masters.map((m) => [m.id, m]))
 
     const items = bookings.map((b) => {
+      const customer = b.customerId ? customerMap[b.customerId] : null
       const user = userMap[b.userId]
       const service = b.serviceId ? serviceMap[b.serviceId] : null
       const master = b.masterId ? masterMap[b.masterId] : null
+
+      const client = customer
+        ? { name: customer.name, email: null as string | null, telegramId: customer.telegramId }
+        : user
+          ? { name: user.name, email: user.email, telegramId: user.telegramId }
+          : null
 
       return {
         id: b.id,
@@ -279,9 +297,10 @@ export async function adminRoutes(app: FastifyInstance) {
         confirmedAt: b.confirmedAt,
         cancelledAt: b.cancelledAt,
         completedAt: b.completedAt,
-        client: user
-          ? { name: user.name, email: user.email, telegramId: user.telegramId }
-          : null,
+        client,
+        customerName: customer?.name ?? user?.name ?? null,
+        customerPhone: customer?.phone ?? null,
+        source: b.source,
         service: service
           ? { id: service.id, name: service.name, durationMin: service.durationMin, price: service.price }
           : null,
@@ -292,6 +311,90 @@ export async function adminRoutes(app: FastifyInstance) {
     })
 
     return { bookings: items }
+  })
+
+  // ── Customer search ──────────────────────────────────────────
+
+  app.get("/customers/search", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const q = (request.query as { q?: string }).q
+    if (!q || typeof q !== "string" || q.trim().length < 2) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Query q must be at least 2 characters",
+      })
+    }
+    const normalized = normalizePhone(q)
+    const searchTerm = q.trim()
+    const where =
+      normalized && normalized.length >= 2
+        ? {
+            OR: [
+              { name: { contains: searchTerm, mode: "insensitive" as const } },
+              { phone: { contains: normalized, mode: "insensitive" as const } },
+            ],
+          }
+        : { name: { contains: searchTerm, mode: "insensitive" as const } }
+    const customers = await prisma.customer.findMany({
+      where,
+      take: 20,
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        telegramId: true,
+        telegramUsername: true,
+      },
+    })
+    return { customers }
+  })
+
+  // ── Customer create ───────────────────────────────────────────
+
+  const customerCreateBody = z.object({
+    name: z.string().min(1, "name обязательно"),
+    phone: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+  })
+
+  app.post("/customers", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = customerCreateBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+    const { name, phone, notes } = body.data
+    const phoneVal = phone?.trim() || null
+    const normalizedPhone = phoneVal ? normalizePhone(phoneVal) : null
+    if (normalizedPhone && normalizedPhone.length > 0) {
+      const existing = await prisma.customer.findFirst({
+        where: { phone: normalizedPhone },
+        select: { id: true },
+      })
+      if (existing) {
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: "Customer with this phone already exists",
+        })
+      }
+    }
+    const customer = await prisma.customer.create({
+      data: {
+        name: name.trim(),
+        phone: normalizedPhone?.length ? normalizedPhone : null,
+        notes: notes?.trim() || null,
+      },
+    })
+    return { customer }
   })
 
   // ── Update booking status ─────────────────────────────────────
