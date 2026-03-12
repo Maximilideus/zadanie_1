@@ -101,7 +101,7 @@ export function formatBookingSummary(input: {
 }
 
 export type BookingCardInput = {
-  service: ServiceLike & { displayName?: string; zone?: string }
+  service: ServiceLike & { displayName?: string; zone?: string; isElectroTimePackage?: boolean }
   masterName: string
   scheduledAt: Date | string
 }
@@ -116,6 +116,7 @@ export function formatBookingCard(booking: BookingCardInput): string {
     formatServiceNameOnly(booking.service)
   const zone = (booking.service as { zone?: string }).zone
   const durationMin = booking.service.durationMin
+  const isElectroTimePackage = (booking.service as { isElectroTimePackage?: boolean }).isElectroTimePackage
   const master = formatMasterDisplayName(booking.masterName)
   const date = formatBookingDate(booking.scheduledAt)
   const time = formatBookingTime(booking.scheduledAt)
@@ -123,6 +124,7 @@ export function formatBookingCard(booking: BookingCardInput): string {
     serviceName,
     zone,
     durationMin,
+    isElectroTimePackage,
     masterName: master,
     date,
     time,
@@ -137,11 +139,19 @@ export function formatBookingCardFromParts(parts: {
   masterName: string
   date: string
   time: string
+  /** ELECTRO time-based service: use "Пакет времени" instead of "Зона" */
+  isElectroTimePackage?: boolean
 }): string {
+  const serviceLines: string[] = []
+  if (parts.isElectroTimePackage && parts.zone) {
+    serviceLines.push(`🗂 Пакет времени: ${parts.zone}`)
+  } else {
+    serviceLines.push(`📋 Услуга: ${parts.serviceName}`)
+    if (parts.zone) serviceLines.push(`📍 Зона: ${parts.zone}`)
+  }
+  if (parts.durationMin != null) serviceLines.push(`⏱ Длительность: ${parts.durationMin} мин`)
   const lines: string[] = [
-    `📋 Услуга: ${parts.serviceName}`,
-    ...(parts.zone ? [`📍 Зона: ${parts.zone}`] : []),
-    ...(parts.durationMin != null ? [`⏱ Длительность: ${parts.durationMin} мин`] : []),
+    ...serviceLines,
     "",
     `👩‍⚕️ Мастер: ${parts.masterName}`,
     `📅 Дата: ${parts.date}`,

@@ -252,9 +252,10 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
                           <td style={s.td}>
                             {b.service ? (
                               <>
-                                {b.service.name}
+                                {b.service.serviceLabel ?? b.service.name}
                                 <span style={s.sub}>
-                                  {b.service.durationMin} мин · {b.service.price} ₽
+                                  {!b.service.serviceLabel && b.service.durationMin != null ? `${b.service.durationMin} мин · ` : ""}
+                                  {b.service.price} ₽
                                 </span>
                               </>
                             ) : "—"}

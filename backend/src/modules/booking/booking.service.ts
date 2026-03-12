@@ -358,7 +358,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
   const [services, masters, catalogItems] = await Promise.all([
     prisma.service.findMany({
       where: { id: { in: serviceIds } },
-      select: { id: true, name: true, durationMin: true },
+      select: { id: true, name: true, durationMin: true, category: true, groupKey: true },
     }),
     prisma.user.findMany({
       where: { id: { in: masterIds } },
@@ -377,6 +377,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
         name: s.name,
         displayName: getServiceDisplayName(s.name),
         durationMin: s.durationMin,
+        isElectroTimePackage: s.category === "ELECTRO" && s.groupKey === "time",
       },
     ])
   )
@@ -389,7 +390,10 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
   const masterByName = Object.fromEntries(masters.map((m) => [m.id, m.name]))
   return bookings.map((b) => {
     const svc = b.serviceId ? serviceById[b.serviceId] : null
-    const zone = b.serviceId ? zoneByServiceId[b.serviceId] : undefined
+    let zone = b.serviceId ? zoneByServiceId[b.serviceId] : undefined
+    if (svc?.isElectroTimePackage && !zone && svc.durationMin != null) {
+      zone = `${svc.durationMin} минут`
+    }
     return {
       id: b.id,
       status: b.status,
@@ -401,6 +405,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
             displayName: svc.displayName,
             zone: zone ?? undefined,
             durationMin: svc.durationMin,
+            isElectroTimePackage: svc.isElectroTimePackage,
           }
         : { name: "—", displayName: "—", durationMin: undefined as number | undefined },
       masterName: b.masterId ? masterByName[b.masterId] ?? "—" : "—",

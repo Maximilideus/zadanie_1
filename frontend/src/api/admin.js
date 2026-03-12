@@ -227,6 +227,7 @@ export async function getAdminServices(params = {}) {
   if (params.serviceKind) qs.set("serviceKind", params.serviceKind);
   if (params.category) qs.set("category", params.category);
   if (params.locationId) qs.set("locationId", params.locationId);
+  if (params.bookableOnly) qs.set("bookableOnly", "true");
 
   const url = `${API_BASE}/admin/services${qs.toString() ? `?${qs}` : ""}`;
   const res = await fetch(url, { headers: authHeaders() });

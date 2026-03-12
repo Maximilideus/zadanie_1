@@ -10,29 +10,27 @@ interface BookingNotificationData {
   scheduledAt: Date | null
   durationMin?: number | null
   zone?: string | null
+  isElectroTimePackage?: boolean
 }
 
 function buildDetailsBlock(data: BookingNotificationData): string {
-  if (!data.serviceName || !data.masterName || !data.scheduledAt) {
-    const parts: string[] = []
-    if (data.serviceName) parts.push(`📋 Услуга: ${data.serviceName}`)
-    if (data.masterName) parts.push(`👩‍⚕️ Мастер: ${data.masterName}`)
-    if (data.scheduledAt) {
-      const d = data.scheduledAt
-      const date = d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: SALON_TIMEZONE })
-      const time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: SALON_TIMEZONE })
-      parts.push(`📅 Дата: ${date}`, `⏰ Время: ${time}`)
-    }
-    return parts.join("\n")
-  }
   const d = data.scheduledAt
-  const date = d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: SALON_TIMEZONE })
-  const time = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: SALON_TIMEZONE })
+  const date = d
+    ? d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: SALON_TIMEZONE })
+    : "—"
+  const time = d
+    ? d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: SALON_TIMEZONE })
+    : "—"
+  const serviceName =
+    data.isElectroTimePackage && !data.zone
+      ? "Электроэпиляция"
+      : (data.serviceName ?? "—")
   return formatBookingCardFromParts({
-    serviceName: data.serviceName,
+    serviceName,
     zone: data.zone ?? undefined,
     durationMin: data.durationMin ?? undefined,
-    masterName: data.masterName,
+    isElectroTimePackage: data.isElectroTimePackage,
+    masterName: data.masterName ?? "—",
     date,
     time,
   })

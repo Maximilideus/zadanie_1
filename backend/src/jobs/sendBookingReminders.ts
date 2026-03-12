@@ -50,7 +50,7 @@ async function loadServiceMasterAndZone(serviceId: string, masterId: string) {
   const [service, master, catalogItem] = await Promise.all([
     prisma.service.findUnique({
       where: { id: serviceId },
-      select: { name: true, durationMin: true },
+      select: { name: true, durationMin: true, category: true, groupKey: true },
     }),
     prisma.user.findUnique({
       where: { id: masterId },
@@ -62,11 +62,17 @@ async function loadServiceMasterAndZone(serviceId: string, masterId: string) {
       orderBy: { sortOrder: "asc" },
     }),
   ])
+  let zone = catalogItem?.titleRu ?? undefined
+  const isElectroTimePackage = service?.category === "ELECTRO" && service?.groupKey === "time"
+  if (isElectroTimePackage && !zone && service?.durationMin != null) {
+    zone = `${service.durationMin} минут`
+  }
   return {
     serviceName: service?.name ? getServiceDisplayName(service.name) : "—",
     masterName: master?.name ?? "—",
     durationMin: service?.durationMin ?? undefined,
-    zone: catalogItem?.titleRu ?? undefined,
+    zone,
+    isElectroTimePackage: !!isElectroTimePackage,
   }
 }
 
@@ -77,7 +83,7 @@ function buildReminderText(
   scheduledAt: Date,
   status: string,
   outro: string,
-  options?: { durationMin?: number; zone?: string },
+  options?: { durationMin?: number; zone?: string; isElectroTimePackage?: boolean },
 ): string {
   const card = formatBookingCardFromBooking(serviceName, masterName, scheduledAt, options)
   const lines = [intro, "", card, `Статус: ${STATUS_LABELS[status] ?? status}`]
@@ -155,7 +161,7 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
         already2h: !!booking.reminder2hSentAt,
       }, "Evaluating booking")
 
-      const { serviceName, masterName, durationMin, zone } = await loadServiceMasterAndZone(
+      const { serviceName, masterName, durationMin, zone, isElectroTimePackage } = await loadServiceMasterAndZone(
         booking.serviceId,
         booking.masterId,
       )
@@ -178,7 +184,7 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
           scheduledAt,
           booking.status,
           "Ждём вас.",
-          { durationMin, zone },
+          { durationMin, zone, isElectroTimePackage },
         )
 
         const ok = await sendTelegramMessage({ chat_id: telegramId, text })
@@ -221,7 +227,7 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
           scheduledAt,
           booking.status,
           outro,
-          { durationMin, zone },
+          { durationMin, zone, isElectroTimePackage },
         )
 
         const ok = await sendTelegramMessage({

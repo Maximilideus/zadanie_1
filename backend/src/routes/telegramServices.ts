@@ -1,5 +1,6 @@
 import { FastifyInstance, FastifyRequest } from "fastify"
 import { prisma } from "../lib/prisma"
+import { whereBookableService } from "../lib/bookableServiceFilter"
 
 const UUID_PATTERN = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
 
@@ -28,8 +29,12 @@ const serviceItemSchema = {
 async function listServicesHandler(request: FastifyRequest<{ Querystring: Querystring }>) {
   const { locationId } = request.query
 
+  const baseWhere = locationId ? { locationId } : {}
   const services = await prisma.service.findMany({
-    where: locationId ? { locationId } : undefined,
+    where: {
+      ...baseWhere,
+      AND: [whereBookableService()],
+    },
     select: { id: true, name: true, durationMin: true, price: true, locationId: true },
     orderBy: { name: "asc" },
   })

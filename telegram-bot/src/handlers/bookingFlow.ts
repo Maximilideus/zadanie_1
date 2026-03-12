@@ -1,5 +1,5 @@
 import type { Context } from "grammy"
-import { InlineKeyboard } from "grammy"
+import { InlineKeyboard, Keyboard } from "grammy"
 import {
   getServices,
   getMasters,
@@ -13,6 +13,7 @@ import {
   updateTelegramState,
   rescheduleBooking,
   getUpcomingBookings,
+  checkCustomerHasPhone,
   type ServiceItem,
   type UpcomingBookingItem,
 } from "../api/backend.client.js"
@@ -168,6 +169,8 @@ export interface BookingSession {
   catalogElectroZone?: string
   wizardMessageId?: { chatId: number; messageId: number }
   awaitingDate?: boolean
+  awaitingContact?: boolean
+  phone?: string
   confirm?: ConfirmState
   /** Set when in reschedule flow: the booking to replace */
   rescheduleBookingId?: string
@@ -221,15 +224,22 @@ function isSessionReadyForConfirm(session: BookingSession): boolean {
   return !!(session.serviceId && session.masterId && session.dateStr && session.timeStr)
 }
 
-function buildSummary(session: BookingSession): string {
-  return formatBookingCardFromParts({
+function sessionToCardParts(session: BookingSession, dateStr?: string, timeStr?: string) {
+  const isElectroTime = session.category === "ELECTRO" && session.catalogGroupKey === "time"
+  const zone = session.catalogElectroZone ?? session.catalogTitle
+  return {
     serviceName: stripTrailingDuration(session.serviceName ?? "—"),
-    zone: session.catalogElectroZone ?? session.catalogTitle,
+    zone: zone || undefined,
     durationMin: session.durationMin,
+    isElectroTimePackage: isElectroTime && !!zone,
     masterName: session.masterName ?? "—",
-    date: session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—",
-    time: session.timeStr ?? "—",
-  })
+    date: dateStr ? formatBookingDate(dateStr + "T12:00:00Z") : (session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—"),
+    time: timeStr ?? session.timeStr ?? "—",
+  }
+}
+
+function buildSummary(session: BookingSession): string {
+  return formatBookingCardFromParts(sessionToCardParts(session))
 }
 
 function serviceButtonLabel(s: ServiceItem): string {
@@ -569,7 +579,7 @@ export async function startRescheduleWizard(
   }
 
   const rescheduleOldSummary = formatBookingCard({
-    service: { ...booking.service, zone: undefined },
+    service: booking.service,
     masterName: booking.masterName,
     scheduledAt: booking.scheduledAt,
   })
@@ -588,7 +598,7 @@ export async function startRescheduleWizard(
   if (masters.length === 0) {
     const text =
       "Перенос записи.\n\n" +
-      formatBookingCard({ service: { ...booking.service, zone: undefined }, masterName: booking.masterName, scheduledAt: booking.scheduledAt }) +
+      formatBookingCard({ service: booking.service, masterName: booking.masterName, scheduledAt: booking.scheduledAt }) +
       "\n\nНет доступных мастеров для этой услуги."
     const msg = ctx.callbackQuery?.message
     if (msg && "chat" in msg && "message_id" in msg) {
@@ -606,7 +616,7 @@ export async function startRescheduleWizard(
 
   const text =
     "Перенос записи.\n\n" +
-    formatBookingCard({ service: { ...booking.service, zone: undefined }, masterName: booking.masterName, scheduledAt: booking.scheduledAt }) +
+    formatBookingCard({ service: booking.service, masterName: booking.masterName, scheduledAt: booking.scheduledAt }) +
     "\n\nВыберите мастера:"
 
   const msg = ctx.callbackQuery?.message
@@ -879,7 +889,11 @@ export async function onDateEntered(
   await showTimeSlotScreen(ctx, telegramId, serviceId, masterId, dateStr, slots, "Выберите время:", "morning")
 }
 
-/** After time slot selected: validate session, then show confirm screen. */
+const PHONE_REQUEST_MESSAGE =
+  "Для подтверждения записи нам нужен ваш номер телефона.\n\n" +
+  "Нажимая кнопку ниже, вы соглашаетесь на обработку персональных данных для записи на услуги салона."
+
+/** After time slot selected: validate session, check phone, then show confirm or contact request. */
 export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
@@ -901,11 +915,24 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
       scheduledAtIso,
       confirm: { ...EMPTY_CONFIRM_STATE },
     })
+
     if (session.rescheduleBookingId) {
       await showRescheduleConfirmScreen(ctx, telegramId, scheduledAtIso)
-    } else {
-      await showConfirmScreen(ctx, telegramId, scheduledAtIso)
+      return
     }
+
+    const hasPhone = await checkCustomerHasPhone(String(telegramId))
+    if (hasPhone) {
+      await showConfirmScreen(ctx, telegramId, scheduledAtIso)
+      return
+    }
+
+    setBookingSession(telegramId, { awaitingContact: true })
+    const contactKeyboard = new Keyboard()
+      .requestContact("📱 Поделиться номером")
+      .resized()
+    await ctx.reply(PHONE_REQUEST_MESSAGE, { reply_markup: contactKeyboard })
+    await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {
     await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
     await handleBackendError(ctx, e, session)
@@ -913,14 +940,7 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
 }
 
 function buildConfirmText(session: BookingSession): string {
-  const card = formatBookingCardFromParts({
-    serviceName: stripTrailingDuration(session.serviceName ?? "—"),
-    zone: session.catalogElectroZone ?? session.catalogTitle,
-    durationMin: session.durationMin,
-    masterName: session.masterName ?? "—",
-    date: session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—",
-    time: session.timeStr ?? "—",
-  })
+  const card = formatBookingCardFromParts(sessionToCardParts(session))
   const lines = ["Проверьте данные записи\n", card]
   if (session.price != null) lines.push("", `Цена: ${session.price} ₽`)
   lines.push("", "Запись будет создана и ожидать подтверждения салоном.")
@@ -945,14 +965,7 @@ function buildRescheduleConfirmText(session: BookingSession): string {
   const oldPart = "Текущая запись:\n" + (session.rescheduleOldSummary ?? "—")
   const newPart =
     "Новая запись:\n" +
-    formatBookingCardFromParts({
-      serviceName: stripTrailingDuration(session.serviceName ?? "—"),
-      zone: session.catalogElectroZone ?? session.catalogTitle,
-      durationMin: session.durationMin,
-      masterName: session.masterName ?? "—",
-      date: session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—",
-      time: session.timeStr ?? "—",
-    })
+    formatBookingCardFromParts(sessionToCardParts(session))
   return "Перенос записи\n\n" + oldPart + "\n\n" + newPart + "\n\nНажмите «Подтвердить перенос», чтобы заменить текущую запись на новую."
 }
 
@@ -979,7 +992,8 @@ async function showRescheduleConfirmScreen(
   await editWizardMessage(ctx, session, text, keyboard)
 }
 
-async function showConfirmScreen(ctx: Context, telegramId: number, scheduledAtIso: string): Promise<void> {
+/** Exported for contact handler to resume flow after phone capture. */
+export async function showConfirmScreen(ctx: Context, telegramId: number, scheduledAtIso: string): Promise<void> {
   const session = getBookingSession(telegramId)
   const text = buildConfirmText(session)
   const keyboard = buildConfirmKeyboard(scheduledAtIso)
@@ -1031,7 +1045,16 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
       return
     }
 
-    await ensureActiveBooking(tid)
+    const from = ctx.from
+    const bookingOptions = from
+      ? {
+          phone: session.phone,
+          telegramUsername: from.username,
+          telegramFirstName: from.first_name,
+          telegramLastName: from.last_name,
+        }
+      : undefined
+    await ensureActiveBooking(tid, bookingOptions)
     await setBookingService(tid, serviceId)
     await setBookingMaster(tid, masterId)
     await setBookingTime(tid, scheduledAtIso)
@@ -1045,10 +1068,7 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
   }
 
   const card = formatBookingCardFromParts({
-    serviceName: stripTrailingDuration(session.serviceName ?? "—"),
-    zone: session.catalogElectroZone ?? session.catalogTitle,
-    durationMin: session.durationMin,
-    masterName: session.masterName ?? "—",
+    ...sessionToCardParts(session),
     date: formatBookingDate(scheduledAtIso),
     time: formatBookingTime(scheduledAtIso),
   })
@@ -1082,10 +1102,7 @@ export async function onConfirmReschedule(ctx: Context, scheduledAtIso: string):
     clearBookingSession(telegramId)
 
     const newCard = formatBookingCardFromParts({
-      serviceName: stripTrailingDuration(session.serviceName ?? "—"),
-      zone: session.catalogElectroZone ?? session.catalogTitle,
-      durationMin: session.durationMin,
-      masterName: session.masterName ?? "—",
+      ...sessionToCardParts(session),
       date: newBooking.scheduledAt ? formatBookingDate(newBooking.scheduledAt) : "—",
       time: newBooking.scheduledAt ? formatBookingTime(newBooking.scheduledAt) : "—",
     })

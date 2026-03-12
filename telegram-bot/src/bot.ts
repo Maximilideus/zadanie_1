@@ -27,9 +27,11 @@ import {
   onNearestBack,
   onTimeFilterChosen,
   getBookingSession,
+  setBookingSession,
   clearBookingSession,
   startWizardWithService,
   startRescheduleWizard,
+  showConfirmScreen,
   isDateString,
   isStaleWizardCallback,
   handleStaleCallback,
@@ -838,11 +840,37 @@ bot.callbackQuery("cancel_bk_no", async (ctx) => {
   }
 })
 
+bot.on("message:contact", async (ctx) => {
+  const from = ctx.from
+  if (!from) return
+  const session = getBookingSession(from.id)
+  if (!session.awaitingContact || !session.serviceId || !session.masterId || !session.dateStr || !session.scheduledAtIso) {
+    return
+  }
+  const phone = ctx.message.contact.phone_number
+  if (!phone || phone.trim().length === 0) {
+    await ctx.reply("Не удалось получить номер. Попробуйте ещё раз.")
+    return
+  }
+  setBookingSession(from.id, {
+    phone: phone.trim(),
+    awaitingContact: false,
+  })
+  await ctx.reply("Спасибо!", {
+    reply_markup: { remove_keyboard: true },
+  })
+  await showConfirmScreen(ctx, from.id, session.scheduledAtIso)
+})
+
 bot.on("message:text", async (ctx) => {
   const text = ctx.message.text?.trim() ?? ""
   const from = ctx.from
   if (!from || !text) return
   const session = getBookingSession(from.id)
+  if (session.awaitingContact) {
+    await ctx.reply("Пожалуйста, нажмите кнопку «📱 Поделиться номером» для передачи номера телефона.")
+    return
+  }
   if (
     session.awaitingDate &&
     session.serviceId &&

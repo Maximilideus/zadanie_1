@@ -24,6 +24,8 @@ export interface BookingCardParts {
   masterName: string
   date: string
   time: string
+  /** ELECTRO time-based service: use "Пакет времени" instead of "Зона" */
+  isElectroTimePackage?: boolean
 }
 
 /**
@@ -31,10 +33,16 @@ export interface BookingCardParts {
  * Use for reminders and status notifications so all booking messages look the same.
  */
 export function formatBookingCardFromParts(parts: BookingCardParts): string {
+  const serviceLines: string[] = []
+  if (parts.isElectroTimePackage && parts.zone) {
+    serviceLines.push(`🗂 Пакет времени: ${parts.zone}`)
+  } else {
+    serviceLines.push(`📋 Услуга: ${parts.serviceName}`)
+    if (parts.zone) serviceLines.push(`📍 Зона: ${parts.zone}`)
+  }
+  if (parts.durationMin != null) serviceLines.push(`⏱ Длительность: ${parts.durationMin} мин`)
   const lines: string[] = [
-    `📋 Услуга: ${parts.serviceName}`,
-    ...(parts.zone ? [`📍 Зона: ${parts.zone}`] : []),
-    ...(parts.durationMin != null ? [`⏱ Длительность: ${parts.durationMin} мин`] : []),
+    ...serviceLines,
     "",
     `👩‍⚕️ Мастер: ${parts.masterName}`,
     `📅 Дата: ${parts.date}`,
@@ -47,12 +55,13 @@ export function formatBookingCardFromBooking(
   serviceName: string,
   masterName: string,
   scheduledAt: Date,
-  options?: { zone?: string; durationMin?: number }
+  options?: { zone?: string; durationMin?: number; isElectroTimePackage?: boolean }
 ): string {
   return formatBookingCardFromParts({
     serviceName,
     zone: options?.zone,
     durationMin: options?.durationMin,
+    isElectroTimePackage: options?.isElectroTimePackage,
     masterName,
     date: formatDate(scheduledAt),
     time: formatTime(scheduledAt),

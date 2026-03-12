@@ -14,6 +14,7 @@ import { recalcAffectedPackages } from "../../services/packageAggregateSync"
 import { assertNoDuplicatePackageComposition } from "../../services/packageDuplicateCheck"
 import { assertNoDuplicateSubscription } from "../../services/subscriptionDuplicateCheck"
 import { normalizePhone } from "../../lib/phoneNormalize"
+import { whereBookableService } from "../../lib/bookableServiceFilter"
 import type { CatalogCategory, CatalogGender } from "@prisma/client"
 
 const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/
@@ -47,6 +48,7 @@ const servicesQuery = z.object({
   serviceKind: z.enum(["BUSINESS", "LEGACY_TEMPLATE"]).optional(),
   category: z.enum(["LASER", "WAX", "ELECTRO", "MASSAGE"]).optional(),
   locationId: z.string().uuid().optional(),
+  bookableOnly: z.enum(["true", "false"]).optional(),
 })
 
 const packagesQuery = z.object({
@@ -261,7 +263,7 @@ export async function adminRoutes(app: FastifyInstance) {
       serviceIds.length > 0
         ? prisma.service.findMany({
             where: { id: { in: serviceIds } },
-            select: { id: true, name: true, durationMin: true, price: true },
+            select: { id: true, name: true, durationMin: true, price: true, category: true, groupKey: true },
           })
         : [],
       masterIds.length > 0
@@ -302,7 +304,16 @@ export async function adminRoutes(app: FastifyInstance) {
         customerPhone: customer?.phone ?? null,
         source: b.source,
         service: service
-          ? { id: service.id, name: service.name, durationMin: service.durationMin, price: service.price }
+          ? {
+              id: service.id,
+              name: service.name,
+              durationMin: service.durationMin,
+              price: service.price,
+              serviceLabel:
+                service.category === "ELECTRO" && service.groupKey === "time" && service.durationMin != null
+                  ? `Электро - ${service.durationMin} минут`
+                  : undefined,
+            }
           : null,
         master: master
           ? { id: master.id, name: master.name }
@@ -430,7 +441,7 @@ export async function adminRoutes(app: FastifyInstance) {
         if (!booking?.user?.telegramId) return
         const [service, master, catalogItem] = await Promise.all([
           booking.serviceId
-            ? prisma.service.findUnique({ where: { id: booking.serviceId }, select: { name: true, durationMin: true } })
+            ? prisma.service.findUnique({ where: { id: booking.serviceId }, select: { name: true, durationMin: true, category: true, groupKey: true } })
             : null,
           booking.masterId
             ? prisma.user.findUnique({ where: { id: booking.masterId }, select: { name: true } })
@@ -444,6 +455,11 @@ export async function adminRoutes(app: FastifyInstance) {
             : null,
         ])
         const serviceDisplayName = service?.name ? getServiceDisplayName(service.name) : null
+        let zone = catalogItem?.titleRu ?? null
+        const isElectroTimePackage = service?.category === "ELECTRO" && service?.groupKey === "time"
+        if (isElectroTimePackage && !zone && service?.durationMin != null) {
+          zone = `${service.durationMin} минут`
+        }
         await sendBookingStatusNotification({
           telegramId: booking.user.telegramId,
           newStatus,
@@ -451,7 +467,8 @@ export async function adminRoutes(app: FastifyInstance) {
           masterName: master?.name ?? null,
           scheduledAt: booking.scheduledAt,
           durationMin: service?.durationMin ?? null,
-          zone: catalogItem?.titleRu ?? null,
+          zone,
+          isElectroTimePackage: !!isElectroTimePackage,
         })
       }).catch((err) => {
         console.error("[admin] Booking notification error (non-fatal):", err)
@@ -815,6 +832,9 @@ export async function adminRoutes(app: FastifyInstance) {
     if (q.data.category !== undefined) where.category = q.data.category
     if (q.data.locationId !== undefined) where.locationId = q.data.locationId
     where.serviceKind = q.data.serviceKind ?? "BUSINESS"
+    if (q.data.bookableOnly === "true") {
+      where.AND = [whereBookableService()]
+    }
     const services = await prisma.service.findMany({
       where: where as any,
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -941,6 +961,14 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const { name, category, gender, locationId, serviceIds, isVisible, showOnWebsite, showInBot, sortOrder } = body.data
 
+    if (category === "ELECTRO") {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Для электроэпиляции комплексы не используются. Создавайте пакеты времени или абонементы.",
+      })
+    }
+
     try {
       await assertNoDuplicatePackageComposition({ category, gender, locationId, serviceIds })
     } catch (e) {
@@ -1052,6 +1080,7 @@ export async function adminRoutes(app: FastifyInstance) {
         category,
         gender,
         locationId,
+        AND: [whereBookableService()],
       },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       select: {

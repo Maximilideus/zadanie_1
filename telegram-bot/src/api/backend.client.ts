@@ -86,6 +86,7 @@ export interface UpcomingBookingItem {
     displayName?: string
     zone?: string
     durationMin?: number
+    isElectroTimePackage?: boolean
   }
   masterName: string
 }
@@ -109,6 +110,20 @@ export async function hasActiveBooking(telegramId: string): Promise<boolean> {
   return bookings.some((b) => ACTIVE_STATUSES.has(b.status))
 }
 
+/** Check if Customer exists for this telegramId and has a phone number. */
+export async function checkCustomerHasPhone(telegramId: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/telegram/customers/check?telegramId=${encodeURIComponent(telegramId)}`
+    )
+    if (!res.ok) return false
+    const data = (await res.json()) as { hasPhone: boolean }
+    return data.hasPhone === true
+  } catch {
+    return false
+  }
+}
+
 export interface CreateTelegramBookingResponse {
   id: string
   userId: string
@@ -121,13 +136,27 @@ export interface CreateTelegramBookingResponse {
   completedAt: string | null
 }
 
+export interface CreateTelegramBookingOptions {
+  phone?: string
+  telegramUsername?: string
+  telegramFirstName?: string
+  telegramLastName?: string
+}
+
 export async function createTelegramBooking(
-  telegramId: string
+  telegramId: string,
+  options?: CreateTelegramBookingOptions
 ): Promise<CreateTelegramBookingResponse> {
+  const body: Record<string, string> = { telegramId }
+  if (options?.phone) body.phone = options.phone
+  if (options?.telegramUsername) body.telegramUsername = options.telegramUsername
+  if (options?.telegramFirstName) body.telegramFirstName = options.telegramFirstName
+  if (options?.telegramLastName) body.telegramLastName = options.telegramLastName
+
   const res = await fetch(`${BACKEND_URL}/telegram/bookings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ telegramId }),
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {
@@ -140,9 +169,12 @@ export async function createTelegramBooking(
 }
 
 /** Ensure user has an active PENDING booking. Idempotent. Does not change state (backend sets BOOKING_FLOW on create). */
-export async function ensureActiveBooking(telegramId: string): Promise<void> {
+export async function ensureActiveBooking(
+  telegramId: string,
+  options?: CreateTelegramBookingOptions
+): Promise<void> {
   try {
-    await createTelegramBooking(telegramId)
+    await createTelegramBooking(telegramId, options)
   } catch (e) {
     if (e instanceof Error && e.message === "ACTIVE_BOOKING_EXISTS") {
       return

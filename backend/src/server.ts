@@ -10,6 +10,7 @@ import { authRoutes } from "./modules/auth/auth.routes"
 import { adminRoutes } from "./modules/admin/admin.routes"
 import { telegramRoutes } from "./modules/telegram/telegram.routes"
 import { telegramBookingsRoutes } from "./routes/telegramBookings"
+import { telegramCustomersRoutes } from "./routes/telegramCustomers"
 import { bookingStepsRoutes } from "./routes/telegram/bookingSteps"
 import { telegramAvailabilityRoutes } from "./routes/telegramAvailability"
 import { telegramMastersRoutes } from "./routes/telegramMasters"
@@ -114,6 +115,7 @@ app.register(jwtPlugin)
   app.register(authRoutes, { prefix: "/auth" })
   app.register(telegramRoutes, { prefix: "/telegram" })
   app.register(telegramBookingsRoutes, { prefix: "/telegram" })
+  app.register(telegramCustomersRoutes, { prefix: "/telegram" })
   app.register(bookingStepsRoutes, { prefix: "/telegram" })
   app.register(telegramAvailabilityRoutes, { prefix: "/telegram" })
   app.register(telegramMastersRoutes, { prefix: "/telegram" })

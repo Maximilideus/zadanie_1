@@ -118,7 +118,7 @@ export async function onCategoryChosen(ctx: Context, slug: CategorySlug): Promis
   }
 
   if (slug === "electro") {
-    await showElectroZoneGroups(ctx, from.id, sections)
+    await showElectroTimeServices(ctx, from.id, sections)
     return
   }
 
@@ -319,43 +319,58 @@ export async function reenterCategoryContext(ctx: Context): Promise<void> {
   await onCategoryChosen(ctx, slug)
 }
 
-// ── Electro: zone group → concrete zone → master ────────────────────
+// ── Electro: time-based booking services only (no informational zones) ───
 
-async function showElectroZoneGroups(
+/** Collect unique items from "time" group across genders. ELECTRO zones are display-only. */
+function getElectroTimeItems(sections: CatalogGroupedResponse["sections"]): CatalogItemDto[] {
+  const byId = new Map<string, CatalogItemDto>()
+  for (const genderSections of Object.values(sections ?? {})) {
+    const timeSection = genderSections?.time
+    if (!timeSection?.items?.length) continue
+    for (const item of timeSection.items) {
+      if (item?.id && !byId.has(item.id)) byId.set(item.id, item)
+    }
+  }
+  return Array.from(byId.values()).sort((a, b) => (a.durationMin ?? 0) - (b.durationMin ?? 0))
+}
+
+async function showElectroTimeServices(
   ctx: Context,
   telegramId: number,
   sections: CatalogGroupedResponse["sections"],
 ): Promise<void> {
-  const allGroups = new Map<string, CatalogGroupSection>()
-  for (const genderSections of Object.values(sections)) {
-    for (const [gk, section] of Object.entries(genderSections)) {
-      if (gk === "time") continue
-      if (!allGroups.has(gk)) {
-        allGroups.set(gk, { ...section, items: [...section.items] })
-      } else {
-        allGroups.get(gk)!.items.push(...section.items)
-      }
-    }
-  }
+  const timeItems = getElectroTimeItems(sections)
+  const bookable = timeItems.filter((i) => i.price != null && i.durationMin != null)
 
-  const groupKeys = Array.from(allGroups.keys())
-  if (groupKeys.length === 0) {
-    await editOrSend(ctx, telegramId, "В категории «Электроэпиляция» пока нет позиций.", new InlineKeyboard())
+  if (bookable.length === 0) {
+    const keyboard = new InlineKeyboard()
+    keyboard.text("📋 Консультация и подбор времени", "consult:electro").row()
+    keyboard.text("◀️ Назад", "cat_back")
+    await editOrSend(
+      ctx,
+      telegramId,
+      "В категории «Электроэпиляция» пока нет пакетов времени для записи.\n\nДля консультации и подбора времени нажмите кнопку ниже.",
+      keyboard,
+    )
     return
   }
 
   const keyboard = new InlineKeyboard()
-  for (const gk of groupKeys) {
-    if (gk === "info") {
-      keyboard.text(groupTitle(gk), `einfo:${gk}`).row()
-    } else {
-      keyboard.text(groupTitle(gk), `ezone:${gk}`).row()
-    }
+  for (const item of bookable) {
+    const price = priceLabel(item.price)
+    const timeLabel = item.subtitle ?? (item.durationMin != null ? `${item.durationMin} мин` : item.title)
+    const label = price ? `${timeLabel} — ${price}` : timeLabel
+    keyboard.text(label, `ci:${item.id}`).row()
   }
   keyboard.text("📋 Несколько зон или консультация", "consult:electro").row()
   keyboard.text("◀️ Назад", "cat_back")
 
-  await editOrSend(ctx, telegramId, "Электроэпиляция\n\nВыберите зону:", keyboard)
+  await editOrSend(
+    ctx,
+    telegramId,
+    "Электроэпиляция\n\nЗапись производится по времени. Выберите пакет:",
+    keyboard,
+  )
 }
 
 export async function onElectroZoneGroupChosen(
@@ -546,11 +561,19 @@ function buildCatalogIntro(item: {
   titleRu: string
   price: number | null
   durationMin: number | null
+  groupKey?: string | null
 }): string {
-  const category = CATEGORY_LABEL_RU[item.category.toLowerCase()] ?? item.category
-  const lines = ["Вы выбрали:", "", category]
-  lines.push(`Зона: ${item.titleRu}`)
-  if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
+  const isElectroTime = item.category === "ELECTRO" && item.groupKey === "time"
+  const lines = ["Вы выбрали:", ""]
+  if (isElectroTime) {
+    lines.push("📋 Услуга: Электроэпиляция")
+    if (item.durationMin != null) lines.push(`⏱ Длительность: ${item.durationMin} мин`)
+  } else {
+    const category = CATEGORY_LABEL_RU[item.category.toLowerCase()] ?? item.category
+    lines.push(category)
+    lines.push(`Зона: ${item.titleRu}`)
+    if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
+  }
   if (item.price != null) lines.push(`Цена: ${item.price} ₽`)
   return lines.join("\n")
 }

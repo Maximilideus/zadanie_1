@@ -34,9 +34,17 @@ export async function resolveCatalogDeepLink(catalogItemId: string): Promise<Dee
 }
 
 export function formatCatalogIntro(item: CatalogItemResponse): string {
-  const category = CATEGORY_LABELS[item.category] ?? item.category
-  const lines = ["Вы выбрали:", "", category, `Зона: ${item.titleRu}`]
-  if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
+  const isElectroTime = item.category === "ELECTRO" && item.groupKey === "time"
+  const lines = ["Вы выбрали:", ""]
+  if (isElectroTime) {
+    lines.push("📋 Услуга: Электроэпиляция")
+    if (item.durationMin != null) lines.push(`⏱ Длительность: ${item.durationMin} мин`)
+  } else {
+    const category = CATEGORY_LABELS[item.category] ?? item.category
+    lines.push(category)
+    lines.push(`Зона: ${item.titleRu}`)
+    if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
+  }
   if (item.price != null) lines.push(`Цена: ${item.price} ₽`)
   return lines.join("\n")
 }

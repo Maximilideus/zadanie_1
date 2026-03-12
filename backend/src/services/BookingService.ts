@@ -32,7 +32,10 @@ function handlePrismaError(e: unknown): never {
 export class BookingService {
   private readonly statusMachine = new BookingStatusMachine()
 
-  async createBooking(userId: string) {
+  async createBooking(
+    userId: string,
+    options?: { customerId?: string; source?: "BOT" }
+  ) {
     const active = await prisma.booking.findFirst({
       where: {
         userId,
@@ -44,7 +47,12 @@ export class BookingService {
     }
     try {
       return await prisma.booking.create({
-        data: { userId, status: "PENDING" },
+        data: {
+          userId,
+          status: "PENDING",
+          customerId: options?.customerId ?? undefined,
+          source: options?.source ?? undefined,
+        },
         select: bookingSelect,
       })
     } catch (e) {

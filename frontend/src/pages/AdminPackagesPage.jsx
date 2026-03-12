@@ -48,9 +48,11 @@ const GENDER_CREATE_OPTIONS = [
 const CATEGORY_CREATE_OPTIONS = [
   { value: "LASER", label: "Лазер" },
   { value: "WAX", label: "Воск" },
-  { value: "ELECTRO", label: "Электро" },
+  { value: "ELECTRO", label: "Электро (недоступно)", disabled: true },
   { value: "MASSAGE", label: "Массаж" },
 ];
+
+const ELECTRO_PACKAGE_NOTE = "Для электроэпиляции комплексы не используются. Используйте пакеты времени или абонементы.";
 
 function genderDisplay(gender) {
   if (gender == null) return GENDER_LABELS.NONE;
@@ -119,6 +121,7 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
         gender: createDraft.gender,
         locationId: createDraft.locationId,
         serviceKind: "BUSINESS",
+        bookableOnly: true,
       });
       setBuilderServices(svc);
     } catch {
@@ -413,7 +416,7 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
                     onChange={(e) => setCreateDraft((p) => ({ ...p, category: e.target.value, selectedServiceIds: [] }))}
                   >
                     {CATEGORY_CREATE_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
+                      <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
                     ))}
                   </select>
                 </div>
@@ -442,6 +445,7 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
                   </select>
                 </div>
               </div>
+              <p style={{ ...s.subText, marginTop: 8, width: "100%" }}>{ELECTRO_PACKAGE_NOTE}</p>
             </div>
 
             <div style={s.createSection}>

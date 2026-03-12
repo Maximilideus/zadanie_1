@@ -104,7 +104,7 @@ export function AdminMastersPage({ adminUser, onLogout }) {
 
   useEffect(() => {
     loadMasters();
-    getAdminServices().then(setAllServices).catch(() => {});
+    getAdminServices({ bookableOnly: true }).then(setAllServices).catch(() => {});
   }, [loadMasters]);
 
   // ── Create ─────────────────────────────────────────────
