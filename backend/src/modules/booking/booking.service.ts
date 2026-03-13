@@ -87,7 +87,7 @@ async function executeBookingAction(
   bookingId: string,
   action: BookingAction
 ) {
-  let booking: { id: string; userId: string; status: string } | null = null
+  let booking: { id: string; userId: string | null; status: string } | null = null
   try {
     booking = await prisma.booking.findFirst({
       where: { id: bookingId, userId },
@@ -133,7 +133,7 @@ export async function cancelBookingByTelegramId(telegramId: string, bookingId: s
 
   let booking: {
     id: string
-    userId: string
+    userId: string | null
     status: string
     scheduledAt: Date | null
   } | null = null
@@ -204,6 +204,8 @@ export async function rescheduleBookingByTelegramId(
       locationId: true,
       status: true,
       scheduledAt: true,
+      customerId: true,
+      source: true,
     },
   })
   if (!current) throw new Error("NOT_FOUND")
@@ -257,12 +259,14 @@ export async function rescheduleBookingByTelegramId(
     })
     const newBooking = await tx.booking.create({
       data: {
-        userId: current.userId,
+        userId: current.userId ?? undefined,
         serviceId: current.serviceId,
         locationId,
         masterId: newMasterId,
         scheduledAt: parsedScheduledAt,
         status: "PENDING",
+        customerId: current.customerId ?? undefined,
+        source: current.source ?? undefined,
       },
       select: {
         id: true,

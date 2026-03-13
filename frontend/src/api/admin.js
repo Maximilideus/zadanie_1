@@ -367,6 +367,55 @@ export async function getAdminSubscriptionBasePackages(params) {
   return data.packages ?? [];
 }
 
+export async function getAdminCustomer(id) {
+  const res = await fetch(`${API_BASE}/admin/customers/${id}`, {
+    headers: authHeaders(),
+  });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    if (res.status === 404) throw new Error("Клиент не найден");
+    throw new Error("Не удалось загрузить клиента");
+  }
+
+  const data = await res.json();
+  return data.customer;
+}
+
+export async function updateAdminCustomer(id, fields) {
+  const res = await fetch(`${API_BASE}/admin/customers/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(fields),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 404) throw new Error("Клиент не найден");
+    throw new Error(data.message || "Не удалось сохранить изменения");
+  }
+
+  const data = await res.json();
+  return data.customer;
+}
+
+export async function getAdminCustomers(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.page != null) qs.set("page", String(params.page));
+  if (params.limit != null) qs.set("limit", String(params.limit));
+  if (params.q) qs.set("q", params.q);
+
+  const url = `${API_BASE}/admin/customers${qs.toString() ? `?${qs}` : ""}`;
+  const res = await fetch(url, { headers: authHeaders() });
+
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error("Не удалось загрузить клиентов");
+  }
+
+  return res.json();
+}
+
 export async function getAdminSubscriptions() {
   const res = await fetch(`${API_BASE}/admin/subscriptions`, {
     headers: authHeaders(),

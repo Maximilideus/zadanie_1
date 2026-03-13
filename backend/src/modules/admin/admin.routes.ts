@@ -244,7 +244,7 @@ export async function adminRoutes(app: FastifyInstance) {
       },
     })
 
-    const userIds = [...new Set(bookings.map((b) => b.userId))]
+    const userIds = [...new Set(bookings.map((b) => b.userId).filter((id): id is string => id != null))]
     const customerIds = [...new Set(bookings.map((b) => b.customerId).filter(Boolean) as string[])]
     const serviceIds = [...new Set(bookings.map((b) => b.serviceId).filter(Boolean) as string[])]
     const masterIds = [...new Set(bookings.map((b) => b.masterId).filter(Boolean) as string[])]
@@ -281,7 +281,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
     const items = bookings.map((b) => {
       const customer = b.customerId ? customerMap[b.customerId] : null
-      const user = userMap[b.userId]
+      const user = b.userId != null ? userMap[b.userId] : undefined
       const service = b.serviceId ? serviceMap[b.serviceId] : null
       const master = b.masterId ? masterMap[b.masterId] : null
 
@@ -299,6 +299,7 @@ export async function adminRoutes(app: FastifyInstance) {
         confirmedAt: b.confirmedAt,
         cancelledAt: b.cancelledAt,
         completedAt: b.completedAt,
+        customerId: b.customerId ?? null,
         client,
         customerName: customer?.name ?? user?.name ?? null,
         customerPhone: customer?.phone ?? null,
@@ -322,6 +323,47 @@ export async function adminRoutes(app: FastifyInstance) {
     })
 
     return { bookings: items }
+  })
+
+  // ── Customer list ─────────────────────────────────────────────
+
+  app.get("/customers", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const query = request.query as { page?: string; limit?: string; q?: string }
+    const page = Math.max(1, parseInt(query.page ?? "1", 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(query.limit ?? "20", 10) || 20))
+    const q = typeof query.q === "string" ? query.q.trim() : undefined
+
+    const where = q && q.length > 0
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" as const } },
+            { phone: { contains: q } },
+          ],
+        }
+      : {}
+
+    const [items, total] = await Promise.all([
+      prisma.customer.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          telegramUsername: true,
+          telegramFirstName: true,
+          telegramLastName: true,
+          createdAt: true,
+        },
+      }),
+      prisma.customer.count({ where }),
+    ])
+
+    return { items, page, limit, total }
   })
 
   // ── Customer search ──────────────────────────────────────────
@@ -408,6 +450,97 @@ export async function adminRoutes(app: FastifyInstance) {
     return { customer }
   })
 
+  // ── Customer profile ─────────────────────────────────────────
+
+  app.get("/customers/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        bookings: {
+          orderBy: { scheduledAt: "desc" },
+          include: {
+            service: { select: { id: true, name: true } },
+          },
+        },
+      },
+    })
+    if (!customer) {
+      return reply.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Клиент не найден",
+      })
+    }
+    const masterIds = [...new Set(customer.bookings.map((b) => b.masterId).filter(Boolean) as string[])]
+    const masters =
+      masterIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: masterIds } },
+            select: { id: true, name: true },
+          })
+        : []
+    const masterMap = Object.fromEntries(masters.map((m) => [m.id, m]))
+    const bookings = customer.bookings.map((b) => ({
+      id: b.id,
+      scheduledAt: b.scheduledAt,
+      status: b.status,
+      source: b.source,
+      service: b.service ? { name: b.service.name } : null,
+      master: b.masterId ? (masterMap[b.masterId] ? { name: masterMap[b.masterId].name } : null) : null,
+    }))
+    const { bookings: _b, ...customerData } = customer
+    return { customer: { ...customerData, bookings } }
+  })
+
+  // ── Customer update ───────────────────────────────────────────
+
+  const customerPatchBody = z.object({
+    name: z.string().optional(),
+    phone: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+  })
+
+  app.patch("/customers/:id", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const { id } = request.params as { id: string }
+    const body = customerPatchBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: body.error.issues.map((i) => i.message).join("; "),
+      })
+    }
+    const data: { name?: string; phone?: string | null; notes?: string | null } = {}
+    if (body.data.name !== undefined) data.name = body.data.name.trim()
+    if (body.data.phone !== undefined) {
+      const phoneVal = body.data.phone?.trim() || null
+      data.phone = phoneVal ? normalizePhone(phoneVal) : null
+    }
+    if (body.data.notes !== undefined) data.notes = body.data.notes?.trim() || null
+    try {
+      const customer = await prisma.customer.update({
+        where: { id },
+        data,
+      })
+      return { customer }
+    } catch (e) {
+      const err = e as { code?: string }
+      if (err.code === "P2025") {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Клиент не найден",
+        })
+      }
+      throw e
+    }
+  })
+
   // ── Update booking status ─────────────────────────────────────
 
   app.patch("/bookings/:id/status", {
@@ -434,11 +567,13 @@ export async function adminRoutes(app: FastifyInstance) {
         select: {
           scheduledAt: true,
           user: { select: { telegramId: true } },
+          customer: { select: { telegramId: true } },
           serviceId: true,
           masterId: true,
         },
       }).then(async (booking) => {
-        if (!booking?.user?.telegramId) return
+        const telegramId = booking?.user?.telegramId ?? booking?.customer?.telegramId ?? null
+        if (!booking || !telegramId) return
         const [service, master, catalogItem] = await Promise.all([
           booking.serviceId
             ? prisma.service.findUnique({ where: { id: booking.serviceId }, select: { name: true, durationMin: true, category: true, groupKey: true } })
@@ -461,7 +596,7 @@ export async function adminRoutes(app: FastifyInstance) {
           zone = `${service.durationMin} минут`
         }
         await sendBookingStatusNotification({
-          telegramId: booking.user.telegramId,
+          telegramId,
           newStatus,
           serviceName: serviceDisplayName ?? service?.name ?? null,
           masterName: master?.name ?? null,

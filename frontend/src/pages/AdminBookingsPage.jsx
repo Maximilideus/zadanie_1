@@ -58,13 +58,17 @@ function formatDateTime(iso) {
   });
 }
 
-function clientDisplay(client) {
-  if (!client) return "—";
-  const parts = [];
-  if (client.name && client.name !== "unknown") parts.push(client.name);
-  if (client.telegramId) parts.push(`TG:${client.telegramId}`);
-  else if (client.email) parts.push(client.email);
-  return parts.join(" · ") || "—";
+function clientDisplay(client, customerName) {
+  const name = customerName ?? client?.name;
+  if (!name || name === "unknown") {
+    if (client?.telegramId) return `TG:${client.telegramId}`;
+    if (client?.email) return client.email;
+    return "—";
+  }
+  const parts = [name];
+  if (client?.telegramId) parts.push(`TG:${client.telegramId}`);
+  else if (client?.email) parts.push(client.email);
+  return parts.join(" · ");
 }
 
 export function AdminBookingsPage({ adminUser, onLogout }) {
@@ -143,6 +147,7 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
             <h1 style={s.title}>Записи</h1>
             <nav className="admin-nav">
               <button type="button" className="admin-nav-btn active">Записи</button>
+              <button type="button" onClick={() => navigate("/admin/customers")} className="admin-nav-btn">Клиенты</button>
               <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
               <button type="button" onClick={() => navigate("/admin/services")} className="admin-nav-btn">Услуги</button>
               <button type="button" onClick={() => navigate("/admin/packages")} className="admin-nav-btn">Комплексы</button>
@@ -248,7 +253,19 @@ export function AdminBookingsPage({ adminUser, onLogout }) {
                       const isActing = actionLoading === b.id;
                       return (
                         <tr key={b.id} style={s.tr}>
-                          <td style={s.td}>{clientDisplay(b.client)}</td>
+                          <td style={s.td}>
+                            {b.customerId ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/admin/customers/${b.customerId}`)}
+                                style={s.clientLink}
+                              >
+                                {clientDisplay(b.client, b.customerName)}
+                              </button>
+                            ) : (
+                              clientDisplay(b.client, b.customerName)
+                            )}
+                          </td>
                           <td style={s.td}>
                             {b.service ? (
                               <>
@@ -340,6 +357,11 @@ const s = {
   td: {},
   sub: { display: "block", fontSize: "12px", color: "#6b7280", marginTop: "2px" },
   subText: { fontSize: "12px", color: "#6b7280" },
+  clientLink: {
+    background: "none", border: "none", padding: 0, cursor: "pointer",
+    fontSize: "inherit", color: "#2563eb", textDecoration: "underline",
+    textAlign: "left",
+  },
   actions: { display: "flex", gap: "6px", flexWrap: "wrap" },
   actionBtn: {
     padding: "6px 12px", border: "none", borderRadius: "6px",

@@ -300,6 +300,7 @@ export function AdminPackagesPage({ adminUser, onLogout }) {
             <h1 style={s.title}>Комплексы</h1>
             <nav className="admin-nav">
               <button type="button" onClick={() => navigate("/admin/bookings")} className="admin-nav-btn">Записи</button>
+              <button type="button" onClick={() => navigate("/admin/customers")} className="admin-nav-btn">Клиенты</button>
               <button type="button" onClick={() => navigate("/admin/catalog")} className="admin-nav-btn">Каталог</button>
               <button type="button" onClick={() => navigate("/admin/services")} className="admin-nav-btn">Услуги</button>
               <button type="button" className="admin-nav-btn active">Комплексы</button>

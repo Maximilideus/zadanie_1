@@ -29,6 +29,7 @@ const bookingWithDetailsSelect = {
   serviceId: true,
   masterId: true,
   user: { select: { telegramId: true } },
+  customer: { select: { telegramId: true } },
   reminder10hSentAt: true,
   reminder2hSentAt: true,
 } as const
@@ -121,10 +122,19 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
         scheduledAt: { not: null, gt: now },
         serviceId: { not: null },
         masterId: { not: null },
-        user: { telegramId: { not: null } },
-        OR: [
-          { scheduledAt: { lte: cutoff10h }, reminder10hSentAt: null },
-          { scheduledAt: { lte: cutoff2h }, reminder2hSentAt: null },
+        AND: [
+          {
+            OR: [
+              { user: { telegramId: { not: null } } },
+              { customer: { telegramId: { not: null } } },
+            ],
+          },
+          {
+            OR: [
+              { scheduledAt: { lte: cutoff10h }, reminder10hSentAt: null },
+              { scheduledAt: { lte: cutoff2h }, reminder2hSentAt: null },
+            ],
+          },
         ],
       },
       select: bookingWithDetailsSelect,
@@ -136,7 +146,7 @@ async function processReminders(log: ReminderJobLogger): Promise<ReminderRunResu
     if (dueBookings.length === 0) return result
 
     for (const booking of dueBookings) {
-      const telegramId = booking.user.telegramId
+      const telegramId = booking.user?.telegramId ?? booking.customer?.telegramId ?? null
       if (!telegramId || !booking.scheduledAt || !booking.serviceId || !booking.masterId) {
         log.info({ bookingId: booking.id, reason: "missing telegramId/scheduledAt/service/master" }, "Booking skipped")
         result.skipped++

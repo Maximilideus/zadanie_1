@@ -157,6 +157,7 @@ export function AdminZonesPage({ adminUser, onLogout }) {
             </h1>
             <nav className="admin-nav">
               {navBtn("/admin/bookings", "Записи", false)}
+              {navBtn("/admin/customers", "Клиенты", false)}
               {navBtn("/admin/catalog", "Каталог", false)}
               {navBtn("/admin/services", "Услуги", false)}
               {navBtn("/admin/packages", "Комплексы", false)}

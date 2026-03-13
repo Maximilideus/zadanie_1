@@ -32,6 +32,7 @@ import {
   startWizardWithService,
   startRescheduleWizard,
   showConfirmScreen,
+  sendConfirmScreenAsNewMessage,
   isDateString,
   isStaleWizardCallback,
   handleStaleCallback,
@@ -859,7 +860,7 @@ bot.on("message:contact", async (ctx) => {
   await ctx.reply("Спасибо!", {
     reply_markup: { remove_keyboard: true },
   })
-  await showConfirmScreen(ctx, from.id, session.scheduledAtIso)
+  await sendConfirmScreenAsNewMessage(ctx, from.id, session.scheduledAtIso)
 })
 
 bot.on("message:text", async (ctx) => {

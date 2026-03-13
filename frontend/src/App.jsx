@@ -12,6 +12,8 @@ import { AdminPackagesPage } from "./pages/AdminPackagesPage.jsx";
 import { AdminSubscriptionsPage } from "./pages/AdminSubscriptionsPage.jsx";
 import { AdminMastersPage } from "./pages/AdminMastersPage.jsx";
 import { AdminZonesPage } from "./pages/AdminZonesPage.jsx";
+import { AdminCustomersPage } from "./pages/AdminCustomersPage.jsx";
+import { AdminCustomerDetailPage } from "./pages/AdminCustomerDetailPage.jsx";
 import { getAdminMe, getAdminToken } from "./api/admin.js";
 
 export const TELEGRAM_BOOK_URL = "https://t.me/my_salon_ai_assistant_bot";
@@ -123,6 +125,22 @@ export function App() {
           element={
             <AdminGuard adminUser={adminUser}>
               <AdminZonesPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/customers"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminCustomersPage adminUser={adminUser} onLogout={handleLogout} />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/customers/:id"
+          element={
+            <AdminGuard adminUser={adminUser}>
+              <AdminCustomerDetailPage adminUser={adminUser} onLogout={handleLogout} />
             </AdminGuard>
           }
         />

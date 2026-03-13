@@ -386,7 +386,7 @@ export async function showDateSelection(ctx: Context, telegramId: number): Promi
   await editWizardMessage(ctx, session, text, keyboard)
 }
 
-/** User chose "Записаться на ближайшее": set slot and show confirm screen. */
+/** User chose "Записаться на ближайшее": set slot, then same phone-gating as regular slot (confirm or request contact). */
 export async function onNearestSlotChosen(ctx: Context, scheduledAtIso: string): Promise<void> {
   const telegramId = ctx.from?.id
   if (!telegramId) return
@@ -405,12 +405,30 @@ export async function onNearestSlotChosen(ctx: Context, scheduledAtIso: string):
     step: "confirm",
     confirm: { ...EMPTY_CONFIRM_STATE },
   })
+
   if (session.rescheduleBookingId) {
     await showRescheduleConfirmScreen(ctx, telegramId, scheduledAtIso)
-  } else {
-    await showConfirmScreen(ctx, telegramId, scheduledAtIso)
+    await ctx.answerCallbackQuery().catch(() => {})
+    return
   }
-  await ctx.answerCallbackQuery().catch(() => {})
+
+  try {
+    const hasPhone = await checkCustomerHasPhone(String(telegramId))
+    if (hasPhone) {
+      await showConfirmScreen(ctx, telegramId, scheduledAtIso)
+      await ctx.answerCallbackQuery().catch(() => {})
+      return
+    }
+    setBookingSession(telegramId, { awaitingContact: true })
+    const contactKeyboard = new Keyboard()
+      .requestContact("📱 Поделиться номером")
+      .resized()
+    await ctx.reply(PHONE_REQUEST_MESSAGE, { reply_markup: contactKeyboard })
+    await ctx.answerCallbackQuery().catch(() => {})
+  } catch (e) {
+    await ctx.answerCallbackQuery({ text: "Ошибка. Попробуйте ещё раз.", show_alert: true }).catch(() => {})
+    await handleBackendError(ctx, e, getBookingSession(telegramId))
+  }
 }
 
 /** User chose "Выбрать дату и время": show date selection. */
@@ -998,6 +1016,29 @@ export async function showConfirmScreen(ctx: Context, telegramId: number, schedu
   const text = buildConfirmText(session)
   const keyboard = buildConfirmKeyboard(scheduledAtIso)
   await editWizardMessage(ctx, session, text, keyboard)
+}
+
+/**
+ * Send the same confirm UI as a NEW message (e.g. at bottom of chat after contact).
+ * Updates session.wizardMessageId so that edit_time / edit_date / etc. target this message.
+ * Use only when the confirm should appear as a fresh message, not an edit of the previous wizard step.
+ */
+export async function sendConfirmScreenAsNewMessage(
+  ctx: Context,
+  telegramId: number,
+  scheduledAtIso: string,
+): Promise<void> {
+  const session = getBookingSession(telegramId)
+  const text = buildConfirmText(session)
+  const keyboard = buildConfirmKeyboard(scheduledAtIso)
+  const chatId = getChatId(ctx)
+  if (!chatId) return
+  const sent = await ctx.api.sendMessage(chatId, text, {
+    reply_markup: keyboard,
+  })
+  setBookingSession(telegramId, {
+    wizardMessageId: { chatId: sent.chat.id, messageId: sent.message_id },
+  })
 }
 
 /** Re-check availability, then create booking. Protects against duplicates via ConfirmState. */
