@@ -90,6 +90,31 @@ export async function updateAdminBookingStatus(bookingId, status) {
   return res.json();
 }
 
+export async function getAdminAvailability(params) {
+  const { serviceId, masterId, date } = params;
+  const qs = new URLSearchParams({ serviceId, masterId, date });
+  const res = await fetch(`${API_BASE}/admin/availability?${qs}`, { headers: authHeaders() });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось загрузить слоты");
+  }
+  return res.json();
+}
+
+export async function createAdminBooking(body) {
+  const res = await fetch(`${API_BASE}/admin/bookings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Не удалось создать запись");
+  }
+  return res.json();
+}
+
 export async function getAdminMasters() {
   const res = await fetch(`${API_BASE}/admin/masters`, {
     headers: authHeaders(),

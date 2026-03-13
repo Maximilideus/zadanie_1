@@ -4,6 +4,10 @@ import {
   adminLogout,
   getAdminCustomer,
   updateAdminCustomer,
+  getAdminServices,
+  getAdminMasters,
+  getAdminAvailability,
+  createAdminBooking,
 } from "../api/admin.js";
 
 const STATUS_LABELS = {
@@ -67,6 +71,26 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  const [showNewBooking, setShowNewBooking] = useState(false);
+  const [services, setServices] = useState([]);
+  const [masters, setMasters] = useState([]);
+  const [newServiceId, setNewServiceId] = useState("");
+  const [newMasterId, setNewMasterId] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState("");
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createSuccess, setCreateSuccess] = useState(false);
+
+  useEffect(() => {
+    if (!createSuccess) return;
+    const t = setTimeout(() => setCreateSuccess(false), 4000);
+    return () => clearTimeout(t);
+  }, [createSuccess]);
+
   const loadCustomer = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -87,6 +111,60 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
   useEffect(() => {
     loadCustomer();
   }, [loadCustomer]);
+
+  useEffect(() => {
+    if (showNewBooking && services.length === 0) {
+      getAdminServices({ bookableOnly: true }).then(setServices).catch(() => setServices([]));
+    }
+    if (showNewBooking && masters.length === 0) {
+      getAdminMasters().then(setMasters).catch(() => setMasters([]));
+    }
+  }, [showNewBooking, services.length, masters.length]);
+
+  const loadSlots = async () => {
+    if (!newServiceId || !newMasterId || !newDate) return;
+    setSlotsLoading(true);
+    setSlotsError("");
+    setSlots([]);
+    setSelectedSlot(null);
+    try {
+      const data = await getAdminAvailability({ serviceId: newServiceId, masterId: newMasterId, date: newDate });
+      setSlots(data.slots ?? []);
+      if ((data.slots ?? []).length === 0) setSlotsError("На эту дату нет доступных слотов.");
+    } catch (e) {
+      setSlotsError(e.message || "Не удалось загрузить слоты");
+      setSlots([]);
+    } finally {
+      setSlotsLoading(false);
+    }
+  };
+
+  const handleCreateBooking = async () => {
+    if (!id || !newServiceId || !newMasterId || !selectedSlot) return;
+    setCreateLoading(true);
+    setCreateError("");
+    setCreateSuccess(false);
+    try {
+      await createAdminBooking({
+        customerId: id,
+        serviceId: newServiceId,
+        masterId: newMasterId,
+        scheduledAt: selectedSlot,
+      });
+      setCreateSuccess(true);
+      setShowNewBooking(false);
+      setNewServiceId("");
+      setNewMasterId("");
+      setNewDate("");
+      setSlots([]);
+      setSelectedSlot(null);
+      await loadCustomer();
+    } catch (e) {
+      setCreateError(e.message || "Не удалось создать запись");
+    } finally {
+      setCreateLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!id) return;
@@ -345,8 +423,100 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
         </section>
 
         <section className="admin-card" style={s.content}>
-          <h2 style={s.sectionTitle}>История записей</h2>
-          {bookings.length === 0 ? (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <h2 style={s.sectionTitle}>История записей</h2>
+            <button
+              type="button"
+              onClick={() => { setShowNewBooking(!showNewBooking); setCreateError(""); setSlotsError(""); setCreateSuccess(false); }}
+              style={s.newBookingBtn}
+            >
+              {showNewBooking ? "Отмена" : "Новая запись"}
+            </button>
+          </div>
+          {createSuccess && <p style={s.successMsg}>Запись успешно создана.</p>}
+          {showNewBooking && (
+            <div style={s.newBookingForm}>
+              <div style={s.editRow}>
+                <label style={s.editLabel}>Услуга</label>
+                <select
+                  value={newServiceId}
+                  onChange={(e) => { setNewServiceId(e.target.value); setSlots([]); setSelectedSlot(null); }}
+                  style={s.editInput}
+                >
+                  <option value="">Выберите услугу</option>
+                  {services.map((sv) => (
+                    <option key={sv.id} value={sv.id}>{sv.name}{sv.durationMin != null ? ` (${sv.durationMin} мин)` : ""}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={s.editRow}>
+                <label style={s.editLabel}>Мастер</label>
+                <select
+                  value={newMasterId}
+                  onChange={(e) => { setNewMasterId(e.target.value); setSlots([]); setSelectedSlot(null); }}
+                  style={s.editInput}
+                >
+                  <option value="">Выберите мастера</option>
+                  {masters.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={s.editRow}>
+                <label style={s.editLabel}>Дата</label>
+                <input
+                  type="date"
+                  value={newDate}
+                  onChange={(e) => { setNewDate(e.target.value); setSlots([]); setSelectedSlot(null); }}
+                  style={s.editInput}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={loadSlots}
+                disabled={!newServiceId || !newMasterId || !newDate || slotsLoading}
+                style={s.secondaryBtn}
+              >
+                {slotsLoading ? "Загрузка…" : "Загрузить слоты"}
+              </button>
+              {slotsError && <p style={s.saveError}>{slotsError}</p>}
+              {slots.length > 0 && (
+                <>
+                  <p style={s.slotLabel}>Выберите время:</p>
+                  <div style={s.slotGrid}>
+                    {slots.map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setSelectedSlot(slot)}
+                        style={selectedSlot === slot ? s.slotBtnSelected : s.slotBtn}
+                      >
+                        {formatTime(slot)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {selectedSlot && (
+                <>
+                  <p style={s.summaryText}>
+                    {formatDate(selectedSlot)}, {formatTime(selectedSlot)} — {services.find((s) => s.id === newServiceId)?.name ?? ""} — {masters.find((m) => m.id === newMasterId)?.name ?? ""}
+                  </p>
+                  {createError && <p style={s.saveError}>{createError}</p>}
+                  <button
+                    type="button"
+                    onClick={handleCreateBooking}
+                    disabled={createLoading}
+                    style={s.saveBtn}
+                  >
+                    {createLoading ? "Создание…" : "Создать запись"}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {!showNewBooking && (bookings.length === 0 ? (
             <p style={s.msg}>У клиента пока нет записей.</p>
           ) : (
             <div className="admin-table-wrap">
@@ -381,7 +551,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
                 </tbody>
               </table>
             </div>
-          )}
+          ))}
         </section>
       </div>
     </div>
@@ -436,6 +606,28 @@ const s = {
     background: "#1a8c3a", color: "#fff", fontSize: "14px", fontWeight: 600,
     cursor: "pointer", alignSelf: "flex-start",
   },
+  newBookingBtn: {
+    padding: "8px 16px", border: "1px solid #1a8c3a", borderRadius: "8px",
+    background: "#fff", color: "#1a8c3a", fontSize: "14px", fontWeight: 600,
+    cursor: "pointer",
+  },
+  newBookingForm: { display: "flex", flexDirection: "column", gap: "12px", maxWidth: "400px", marginBottom: "16px" },
+  secondaryBtn: {
+    padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "14px", cursor: "pointer", alignSelf: "flex-start",
+  },
+  slotLabel: { fontSize: "13px", fontWeight: 600, color: "#374151", margin: "8px 0 4px" },
+  slotGrid: { display: "flex", flexWrap: "wrap", gap: "8px" },
+  slotBtn: {
+    padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "6px",
+    background: "#fff", fontSize: "13px", cursor: "pointer",
+  },
+  slotBtnSelected: {
+    padding: "8px 12px", border: "2px solid #1a8c3a", borderRadius: "6px",
+    background: "#f0fdf4", fontSize: "13px", cursor: "pointer",
+  },
+  summaryText: { fontSize: "14px", color: "#374151", margin: "8px 0" },
+  successMsg: { color: "#1a8c3a", fontSize: "14px", marginBottom: "8px" },
   th: {},
   tr: {},
   td: {},

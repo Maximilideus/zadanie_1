@@ -16,6 +16,8 @@ import { assertNoDuplicateSubscription } from "../../services/subscriptionDuplic
 import { normalizePhone } from "../../lib/phoneNormalize"
 import { whereBookableService } from "../../lib/bookableServiceFilter"
 import type { CatalogCategory, CatalogGender } from "@prisma/client"
+import { getAvailableSlots } from "../../services/AvailabilityService"
+import { assertElectroServiceBookable } from "../../services/electroBookingGuard"
 
 const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/
 function parseSalonDate(dateStr: string): Date {
@@ -626,6 +628,172 @@ export async function adminRoutes(app: FastifyInstance) {
           message: "Невозможный переход статуса",
         })
       }
+      throw e
+    }
+  })
+
+  // ── Admin availability (reuses getAvailableSlots for manual booking) ──
+
+  const availabilityQuery = z.object({
+    serviceId: z.string().uuid(),
+    masterId: z.string().uuid(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })
+
+  app.get("/availability", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const q = availabilityQuery.safeParse(request.query)
+    if (!q.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Invalid query: serviceId, masterId, date (YYYY-MM-DD) required",
+      })
+    }
+    try {
+      const result = await getAvailableSlots(q.data)
+      return result
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : ""
+      if (msg === "NOT_FOUND" || msg === "MASTER_NOT_AVAILABLE") {
+        return reply.status(404).send({ statusCode: 404, error: "Not Found", message: "Услуга или мастер не найдены" })
+      }
+      if (msg === "INVALID_DATE" || msg === "DATE_OUT_OF_RANGE" || msg === "DATE_IS_TODAY") {
+        return reply.status(400).send({ statusCode: 400, error: "Bad Request", message: "Некорректная или недоступная дата" })
+      }
+      if (msg === "ELECTRO_ZONE_NOT_BOOKABLE") {
+        return reply.status(400).send({ statusCode: 400, error: "Bad Request", message: "Эта услуга недоступна для записи" })
+      }
+      throw e
+    }
+  })
+
+  // ── Admin create booking (manual booking v1) ────────────────────
+
+  const createBookingBody = z.object({
+    customerId: z.string().uuid(),
+    serviceId: z.string().uuid(),
+    masterId: z.string().uuid(),
+    scheduledAt: z.string().min(1),
+  })
+
+  app.post("/bookings", {
+    preHandler: adminPreHandlers,
+  }, async (request: FastifyRequest, reply) => {
+    const body = createBookingBody.safeParse(request.body)
+    if (!body.success) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Требуются: customerId, serviceId, masterId, scheduledAt (ISO)",
+      })
+    }
+    const { customerId, serviceId, masterId, scheduledAt: scheduledAtStr } = body.data
+
+    try {
+      const customer = await prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { id: true },
+      })
+      if (!customer) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Клиент не найден",
+        })
+      }
+
+      const service = await prisma.service.findUnique({
+        where: { id: serviceId },
+        select: { id: true, locationId: true, durationMin: true, category: true, groupKey: true, isBookable: true },
+      })
+      if (!service) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Услуга не найдена",
+        })
+      }
+      if (!service.isBookable) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Услуга недоступна для записи",
+        })
+      }
+      assertElectroServiceBookable(service)
+
+      const master = await prisma.user.findUnique({
+        where: { id: masterId },
+        select: { id: true, role: true, isActive: true },
+      })
+      if (!master || master.role !== "MASTER" || !master.isActive) {
+        return reply.status(404).send({
+          statusCode: 404,
+          error: "Not Found",
+          message: "Мастер не найден или недоступен",
+        })
+      }
+
+      const masterServiceLink = await prisma.masterService.findUnique({
+        where: { masterId_serviceId: { masterId, serviceId } },
+      })
+      if (!masterServiceLink) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Мастер не выполняет эту услугу",
+        })
+      }
+
+      const parsedScheduledAt = new Date(scheduledAtStr)
+      if (Number.isNaN(parsedScheduledAt.getTime())) {
+        return reply.status(400).send({
+          statusCode: 400,
+          error: "Bad Request",
+          message: "Некорректная дата/время",
+        })
+      }
+      const dateStr = DateTime.fromJSDate(parsedScheduledAt, { zone: SALON_TIMEZONE }).toFormat("yyyy-MM-dd")
+      const { slots } = await getAvailableSlots({ serviceId, masterId, date: dateStr })
+      const slotSet = new Set(slots.map((s) => new Date(s).getTime()))
+      if (!slotSet.has(parsedScheduledAt.getTime())) {
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: "Выбранное время недоступно. Обновите слоты и выберите другое время.",
+        })
+      }
+
+      const booking = await prisma.booking.create({
+        data: {
+          userId: null,
+          customerId,
+          source: "ADMIN",
+          serviceId,
+          masterId,
+          locationId: service.locationId,
+          scheduledAt: parsedScheduledAt,
+          status: "PENDING",
+        },
+        select: {
+          id: true,
+          customerId: true,
+          serviceId: true,
+          masterId: true,
+          scheduledAt: true,
+          status: true,
+          source: true,
+          createdAt: true,
+        },
+      })
+      request.log.info(
+        { bookingId: booking.id, customerId, serviceId, masterId, scheduledAt: booking.scheduledAt },
+        "Manual booking created (admin)"
+      )
+      return reply.status(201).send({ booking })
+    } catch (e: unknown) {
       throw e
     }
   })
