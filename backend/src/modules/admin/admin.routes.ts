@@ -704,6 +704,21 @@ export async function adminRoutes(app: FastifyInstance) {
         })
       }
 
+      const existingActive = await prisma.booking.findFirst({
+        where: {
+          customerId,
+          status: { in: ["PENDING", "CONFIRMED"] },
+        },
+        select: { id: true },
+      })
+      if (existingActive) {
+        return reply.status(409).send({
+          statusCode: 409,
+          error: "Conflict",
+          message: "У клиента уже есть активная запись",
+        })
+      }
+
       const service = await prisma.service.findUnique({
         where: { id: serviceId },
         select: { id: true, locationId: true, durationMin: true, category: true, groupKey: true, isBookable: true },
