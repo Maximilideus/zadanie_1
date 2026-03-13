@@ -2,10 +2,7 @@ import { FastifyInstance, FastifyRequest } from "fastify"
 import { z } from "zod"
 import { prisma } from "../lib/prisma"
 import { BookingService } from "../services/BookingService"
-import {
-  findOrCreateFromTelegram,
-  customerHasPhoneByTelegramId,
-} from "../services/CustomerService"
+import { findOrCreateFromTelegram } from "../services/CustomerService"
 
 const createTelegramBookingSchema = z.object({
   telegramId: z.string().min(1),
@@ -34,18 +31,24 @@ async function createTelegramBookingHandler(request: FastifyRequest) {
     lastName: telegramLastName,
   }
 
-  let customerId: string | undefined
-  if (phone && phone.trim().length > 0) {
-    const result = await findOrCreateFromTelegram(telegramId, phone, telegramUser)
-    customerId = result.customerId
-  } else if (await customerHasPhoneByTelegramId(telegramId)) {
-    const result = await findOrCreateFromTelegram(telegramId, null, telegramUser)
-    customerId = result.customerId
+  // Phase 3: always ensure a Customer for this telegramId (find or create by phone/telegramId + profile)
+  const phoneVal = phone?.trim() && phone.trim().length > 0 ? phone.trim() : null
+  const { customerId } = await findOrCreateFromTelegram(telegramId, phoneVal, telegramUser)
+
+  const activeByCustomer = await prisma.booking.findFirst({
+    where: {
+      customerId,
+      status: { in: ["PENDING", "CONFIRMED"] },
+    },
+    select: { id: true },
+  })
+  if (activeByCustomer) {
+    throw new Error("ACTIVE_BOOKING_EXISTS")
   }
 
   const booking = await bookingService.createBooking(user.id, {
     customerId,
-    source: customerId ? "BOT" : undefined,
+    source: "BOT",
   })
 
   await prisma.user.update({

@@ -125,28 +125,28 @@ export async function cancelBooking(userId: string, bookingId: string) {
 const CANCEL_MIN_HOURS = 4
 
 export async function cancelBookingByTelegramId(telegramId: string, bookingId: string) {
-  const user = await prisma.user.findUnique({
-    where: { telegramId },
-    select: { id: true },
-  })
-  if (!user) throw new Error("NOT_FOUND")
+  const { user, customer } = await resolveTelegramIdentityForRead(telegramId)
+  if (!user && !customer) throw new Error("NOT_FOUND")
 
   let booking: {
     id: string
     userId: string | null
+    customerId: string | null
     status: string
     scheduledAt: Date | null
   } | null = null
   try {
     booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      select: { id: true, userId: true, status: true, scheduledAt: true },
+      select: { id: true, userId: true, customerId: true, status: true, scheduledAt: true },
     })
   } catch (e) {
     handlePrismaError(e)
   }
   if (!booking) throw new Error("NOT_FOUND")
-  if (booking.userId !== user.id) throw new Error("NOT_FOUND")
+  const ownedByUser = user && booking.userId === user.id
+  const ownedByCustomer = customer && booking.customerId === customer.id
+  if (!ownedByUser && !ownedByCustomer) throw new Error("NOT_FOUND")
 
   if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
     throw new Error("BOOKING_NOT_CANCELLABLE")
@@ -180,7 +180,10 @@ export async function cancelBookingByTelegramId(telegramId: string, bookingId: s
     throw new Error("CANCELLATION_TOO_LATE")
   }
 
-  return cancelBooking(user.id, bookingId)
+  if (ownedByUser && user) {
+    return cancelBooking(user.id, bookingId)
+  }
+  return updateBookingStatus(bookingId, "CANCELLED")
 }
 
 export async function rescheduleBookingByTelegramId(
@@ -189,14 +192,19 @@ export async function rescheduleBookingByTelegramId(
   newMasterId: string,
   newScheduledAt: string
 ) {
-  const user = await prisma.user.findUnique({
-    where: { telegramId },
-    select: { id: true },
-  })
-  if (!user) throw new Error("NOT_FOUND")
+  const { user, customer } = await resolveTelegramIdentityForRead(telegramId)
+  if (!user && !customer) throw new Error("NOT_FOUND")
+
+  const ownershipOr: Array<{ userId: string } | { customerId: string }> = []
+  if (user) ownershipOr.push({ userId: user.id })
+  if (customer) ownershipOr.push({ customerId: customer.id })
+  if (ownershipOr.length === 0) throw new Error("NOT_FOUND")
 
   const current = await prisma.booking.findFirst({
-    where: { id: currentBookingId, userId: user.id },
+    where: {
+      id: currentBookingId,
+      OR: ownershipOr,
+    },
     select: {
       id: true,
       userId: true,
@@ -319,15 +327,30 @@ export async function updateBookingStatus(bookingId: string, newStatus: BookingS
   }
 }
 
+/** Resolve Telegram identity for reads: both User and Customer by telegramId (Phase 1 customer-first fallback). */
+async function resolveTelegramIdentityForRead(telegramId: string) {
+  const [user, customer] = await Promise.all([
+    prisma.user.findUnique({ where: { telegramId }, select: { id: true } }),
+    prisma.customer.findUnique({ where: { telegramId: String(telegramId) }, select: { id: true } }),
+  ])
+  return { user, customer }
+}
+
+/** Ownership filter: bookings belonging to this Telegram user via userId or customerId. */
+function telegramBookingOwnerWhere(user: { id: string } | null, customer: { id: string } | null) {
+  const or: Array<{ userId: string } | { customerId: string }> = []
+  if (user) or.push({ userId: user.id })
+  if (customer) or.push({ customerId: customer.id })
+  return or.length > 0 ? { OR: or } : null
+}
+
 export async function getBookingsByTelegramId(telegramId: string) {
-  const user = await prisma.user.findUnique({
-    where: { telegramId },
-    select: { id: true },
-  })
-  if (!user) return []
+  const { user, customer } = await resolveTelegramIdentityForRead(telegramId)
+  const ownerWhere = telegramBookingOwnerWhere(user, customer)
+  if (!ownerWhere) return []
   try {
     return await prisma.booking.findMany({
-      where: { userId: user.id },
+      where: ownerWhere,
       select: { id: true, status: true, createdAt: true, scheduledAt: true },
       orderBy: { createdAt: "desc" },
     })
@@ -336,21 +359,23 @@ export async function getBookingsByTelegramId(telegramId: string) {
   }
 }
 
-/** Upcoming bookings for Telegram: scheduledAt > now, with service (displayName, zone, duration), master, status. */
+/** Upcoming bookings for Telegram: scheduledAt > now, with service (displayName, zone, duration), master, status. Customer-first: includes bookings by customerId when Customer.telegramId matches. */
 export async function getUpcomingBookingsByTelegramId(telegramId: string) {
-  const user = await prisma.user.findUnique({
-    where: { telegramId },
-    select: { id: true },
-  })
-  if (!user) return []
+  const { user, customer } = await resolveTelegramIdentityForRead(telegramId)
+  const ownerWhere = telegramBookingOwnerWhere(user, customer)
+  if (!ownerWhere) return []
   const now = new Date()
   const bookings = await prisma.booking.findMany({
     where: {
-      userId: user.id,
-      scheduledAt: { gt: now },
-      status: { in: ["PENDING", "CONFIRMED"] },
-      serviceId: { not: null },
-      masterId: { not: null },
+      AND: [
+        ownerWhere,
+        {
+          scheduledAt: { gt: now },
+          status: { in: ["PENDING", "CONFIRMED"] },
+          serviceId: { not: null },
+          masterId: { not: null },
+        },
+      ],
     },
     select: { id: true, status: true, scheduledAt: true, serviceId: true, masterId: true },
     orderBy: { scheduledAt: "asc" },

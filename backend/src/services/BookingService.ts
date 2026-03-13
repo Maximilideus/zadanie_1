@@ -81,19 +81,30 @@ export class BookingService {
     })
   }
 
+  /**
+   * Resolve current pending Telegram booking: customer-first with user fallback (Phase 2).
+   * User is still required (for state). Returns userId for setScheduledAtByTelegramId state update.
+   */
   private async getPendingBookingByTelegramId(telegramId: string) {
-    const user = await prisma.user.findUnique({
-      where: { telegramId },
-      select: { id: true },
-    })
+    const [user, customer] = await Promise.all([
+      prisma.user.findUnique({ where: { telegramId }, select: { id: true } }),
+      prisma.customer.findUnique({ where: { telegramId: String(telegramId) }, select: { id: true } }),
+    ])
     if (!user) throw new Error("NOT_FOUND")
-    const booking = await prisma.booking.findFirst({
-      where: {
-        userId: user.id,
-        status: "PENDING",
-      },
-      select: { id: true },
-    })
+
+    let booking: { id: string } | null = null
+    if (customer) {
+      booking = await prisma.booking.findFirst({
+        where: { customerId: customer.id, status: "PENDING" },
+        select: { id: true },
+      })
+    }
+    if (!booking) {
+      booking = await prisma.booking.findFirst({
+        where: { userId: user.id, status: "PENDING" },
+        select: { id: true },
+      })
+    }
     if (!booking) throw new Error("NO_PENDING_BOOKING")
     return { userId: user.id, bookingId: booking.id }
   }
