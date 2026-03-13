@@ -12,7 +12,7 @@ export interface GetAvailableSlotsParams {
   date: string
 }
 
-export type UnavailableReason = "NO_WORKING_HOURS" | "NO_FREE_SLOTS"
+export type UnavailableReason = "NO_WORKING_HOURS" | "NO_FREE_SLOTS" | "BLOCKED_DAY"
 
 export interface AvailableSlotsResult {
   timezone: string
@@ -136,7 +136,7 @@ export async function getAvailableSlots(
   })
 
   for (const e of exceptions) {
-    if (e.startAt == null && e.endAt == null) return { timezone, slots: [] }
+    if (e.startAt == null && e.endAt == null) return { timezone, slots: [], unavailableReason: "BLOCKED_DAY" }
     if (e.startAt == null || e.endAt == null) continue
     const exStart = DateTime.fromJSDate(e.startAt, { zone: timezone })
     const exEnd = DateTime.fromJSDate(e.endAt, { zone: timezone })

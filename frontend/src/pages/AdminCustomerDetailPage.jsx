@@ -65,6 +65,14 @@ function formatBookingServiceLabel(service) {
   return service.name;
 }
 
+/** Lightweight customer status for display: 0 bookings → new, 3+ → regular, else client */
+function getCustomerStatusLabel(bookingsCount) {
+  const n = Number(bookingsCount) || 0;
+  if (n === 0) return "Новый клиент";
+  if (n >= 3) return "Постоянный клиент";
+  return "Клиент";
+}
+
 export function AdminCustomerDetailPage({ adminUser, onLogout }) {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -83,6 +91,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
   const [services, setServices] = useState([]);
   const [masters, setMasters] = useState([]);
   const [newCategoryId, setNewCategoryId] = useState("");
+  const [selectedGender, setSelectedGender] = useState("");
   const [newServiceId, setNewServiceId] = useState("");
   const [newMasterId, setNewMasterId] = useState("");
   const [newDate, setNewDate] = useState("");
@@ -93,6 +102,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState(false);
+  const [phoneCopied, setPhoneCopied] = useState(false);
 
   useEffect(() => {
     if (!createSuccess) return;
@@ -136,6 +146,18 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
     return services.filter((s) => s.category === newCategoryId);
   }, [services, newCategoryId]);
 
+  const categoryHasGenderedServices = useMemo(() => {
+    if (newCategoryId === "ELECTRO" || newCategoryId === "MASSAGE") return false;
+    return servicesInCategory.some((s) => s.gender === "FEMALE" || s.gender === "MALE");
+  }, [newCategoryId, servicesInCategory]);
+
+  const servicesFiltered = useMemo(() => {
+    if (!categoryHasGenderedServices || !selectedGender) return servicesInCategory;
+    return servicesInCategory.filter(
+      (s) => s.gender === selectedGender || s.gender === "UNISEX" || s.gender == null
+    );
+  }, [servicesInCategory, categoryHasGenderedServices, selectedGender]);
+
   const mastersForService = useMemo(() => {
     if (!newServiceId) return masters;
     return masters.filter((m) => Array.isArray(m.serviceIds) && m.serviceIds.includes(newServiceId));
@@ -169,6 +191,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
         const reason = data.unavailableReason;
         if (reason === "NO_WORKING_HOURS") setSlotsError("Мастер не работает в этот день.");
         else if (reason === "NO_FREE_SLOTS") setSlotsError("Нет свободных слотов на выбранную дату.");
+        else if (reason === "BLOCKED_DAY") setSlotsError("В этот день мастер не принимает (выходной / отпуск).");
         else setSlotsError("На эту дату нет доступных слотов.");
       }
     } catch (e) {
@@ -194,6 +217,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
       setCreateSuccess(true);
       setShowNewBooking(false);
       setNewCategoryId("");
+      setSelectedGender("");
       setNewServiceId("");
       setNewMasterId("");
       setNewDate("");
@@ -358,6 +382,166 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
         </div>
 
         <section className="admin-card" style={s.content}>
+          <div style={s.customerHeaderRow}>
+            <div style={s.customerHeaderLeft}>
+              <h2 style={s.customerName}>{customer.name || "Без имени"}</h2>
+              <span style={s.customerStatusBadge}>{getCustomerStatusLabel(bookings.length)}</span>
+            </div>
+            {!customer.activeBooking && (
+              <button
+                type="button"
+                onClick={() => { setShowNewBooking(!showNewBooking); setCreateError(""); setSlotsError(""); setCreateSuccess(false); }}
+                style={s.newBookingBtn}
+              >
+                {showNewBooking ? "Отмена" : "Новая запись"}
+              </button>
+            )}
+          </div>
+        </section>
+
+        {createSuccess && <section className="admin-card" style={s.content}><p style={s.successMsg}>Запись успешно создана.</p></section>}
+        {!customer.activeBooking && showNewBooking && (
+          <section className="admin-card" style={s.content}>
+            <div style={s.newBookingForm}>
+              <div style={s.editRow}>
+                <label style={s.editLabel}>Категория услуги</label>
+                <select
+                  value={newCategoryId}
+                  onChange={(e) => {
+                    setNewCategoryId(e.target.value);
+                    setSelectedGender("");
+                    setNewServiceId("");
+                    setNewMasterId("");
+                    setSlots([]);
+                    setSelectedSlot(null);
+                  }}
+                  style={s.editInput}
+                >
+                  <option value="">Выберите категорию</option>
+                  {SERVICE_CATEGORY_OPTIONS.filter((opt) => {
+                    if (opt.value === "OTHER") return services.some((s) => !s.category);
+                    return services.some((s) => s.category === opt.value);
+                  }).map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              {categoryHasGenderedServices && (
+                <div style={s.editRow}>
+                  <label style={s.editLabel}>Для кого</label>
+                  <div style={s.genderButtons}>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedGender("FEMALE"); setNewServiceId(""); setNewMasterId(""); setSlots([]); setSelectedSlot(null); }}
+                      style={selectedGender === "FEMALE" ? s.genderBtnSelected : s.genderBtn}
+                    >
+                      Женщина
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedGender("MALE"); setNewServiceId(""); setNewMasterId(""); setSlots([]); setSelectedSlot(null); }}
+                      style={selectedGender === "MALE" ? s.genderBtnSelected : s.genderBtn}
+                    >
+                      Мужчина
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={s.editRow}>
+                <label style={s.editLabel}>Услуга</label>
+                <select
+                  value={newServiceId}
+                  onChange={(e) => { setNewServiceId(e.target.value); setSlots([]); setSelectedSlot(null); }}
+                  style={s.editInput}
+                  disabled={!newCategoryId || (categoryHasGenderedServices && !selectedGender)}
+                >
+                  <option value="">
+                    {!newCategoryId ? "Сначала выберите категорию" : categoryHasGenderedServices && !selectedGender ? "Сначала выберите пол" : "Выберите услугу"}
+                  </option>
+                  {servicesFiltered.map((sv) => (
+                    <option key={sv.id} value={sv.id}>{sv.name}{sv.durationMin != null ? ` (${sv.durationMin} мин)` : ""}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={s.editRow}>
+                <label style={s.editLabel}>Мастер</label>
+                <select
+                  value={newMasterId}
+                  onChange={(e) => { setNewMasterId(e.target.value); setSlots([]); setSelectedSlot(null); }}
+                  style={s.editInput}
+                  disabled={!newServiceId}
+                >
+                  <option value="">{newServiceId ? (mastersForService.length === 0 ? "Нет мастеров для этой услуги" : "Выберите мастера") : "Сначала выберите услугу"}</option>
+                  {mastersForService.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={s.editRow}>
+                <label style={s.editLabel}>Дата</label>
+                <input
+                  type="date"
+                  value={newDate}
+                  onChange={(e) => { setNewDate(e.target.value); setSlots([]); setSelectedSlot(null); setSlotsError(""); }}
+                  onKeyDown={(e) => {
+                    if (["Tab", "Escape", "Enter", " "].includes(e.key)) return;
+                    e.preventDefault();
+                  }}
+                  style={s.editInput}
+                  autoComplete="off"
+                  min={dateMinMax.min}
+                  max={dateMinMax.max}
+                  title={`Выберите дату в календаре (со следующего дня по ${dateMinMax.max})`}
+                />
+                <p style={s.dateHint}>Выберите дату в календаре. Затем нажмите «Загрузить слоты» — доступность покажет слоты или подсказку.</p>
+              </div>
+              <button
+                type="button"
+                onClick={loadSlots}
+                disabled={!newServiceId || !newMasterId || !newDate || slotsLoading}
+                style={s.secondaryBtn}
+              >
+                {slotsLoading ? "Загрузка…" : "Загрузить слоты"}
+              </button>
+              {slotsError && <p style={s.saveError}>{slotsError}</p>}
+              {slots.length > 0 && (
+                <>
+                  <p style={s.slotLabel}>Выберите время:</p>
+                  <div style={s.slotGrid}>
+                    {slots.map((slot) => (
+                      <button
+                        key={slot}
+                        type="button"
+                        onClick={() => setSelectedSlot(slot)}
+                        style={selectedSlot === slot ? s.slotBtnSelected : s.slotBtn}
+                      >
+                        {formatTime(slot)}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {selectedSlot && (
+                <>
+                  <p style={s.summaryText}>
+                    {formatDate(selectedSlot)}, {formatTime(selectedSlot)} — {services.find((s) => s.id === newServiceId)?.name ?? ""} — {masters.find((m) => m.id === newMasterId)?.name ?? ""}
+                  </p>
+                  {createError && <p style={s.saveError}>{createError}</p>}
+                  <button
+                    type="button"
+                    onClick={handleCreateBooking}
+                    disabled={createLoading}
+                    style={s.saveBtn}
+                  >
+                    {createLoading ? "Создание…" : "Создать запись"}
+                  </button>
+                </>
+              )}
+            </div>
+          </section>
+        )}
+
+        <section className="admin-card" style={s.content}>
           <h2 style={s.sectionTitle}>Информация</h2>
           <div style={s.infoGrid}>
             <div style={s.infoRow}>
@@ -366,7 +550,26 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
             </div>
             <div style={s.infoRow}>
               <span style={s.infoLabel}>Телефон</span>
-              <span style={s.infoValue}>{customer.phone || "—"}</span>
+              <span style={s.infoValue}>
+                {customer.phone ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(customer.phone).then(() => {
+                          setPhoneCopied(true);
+                          setTimeout(() => setPhoneCopied(false), 2000);
+                        });
+                      }}
+                      style={s.phoneAction}
+                      title="Скопировать номер"
+                    >
+                      {customer.phone}
+                    </button>
+                    {phoneCopied && <span style={s.phoneCopiedHint}>Скопировано</span>}
+                  </>
+                ) : "—"}
+              </span>
             </div>
             <div style={s.infoRow}>
               <span style={s.infoLabel}>Telegram username</span>
@@ -469,21 +672,13 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
         </section>
 
         <section className="admin-card" style={s.content}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <h2 style={s.sectionTitle}>История записей</h2>
-            {!customer.activeBooking && (
-              <button
-                type="button"
-                onClick={() => { setShowNewBooking(!showNewBooking); setCreateError(""); setSlotsError(""); setCreateSuccess(false); }}
-                style={s.newBookingBtn}
-              >
-                {showNewBooking ? "Отмена" : "Новая запись"}
-              </button>
-            )}
-          </div>
+          <h2 style={s.sectionTitle}>История записей</h2>
           {customer.activeBooking && (
             <div style={s.activeBookingBlock}>
-              <p style={s.activeBookingTitle}>У клиента уже есть активная запись</p>
+              <p style={s.activeBookingTitle}>
+                <span style={s.activeBookingIcon} aria-hidden>📅</span>
+                У клиента уже есть активная запись
+              </p>
               <p style={s.activeBookingDetail}>
                 {formatDate(customer.activeBooking.scheduledAt)}, {formatTime(customer.activeBooking.scheduledAt)}
                 {customer.activeBooking.service?.name ? ` · ${customer.activeBooking.service.name}` : ""}
@@ -495,116 +690,6 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
               </button>
             </div>
           )}
-          {createSuccess && <p style={s.successMsg}>Запись успешно создана.</p>}
-          {!customer.activeBooking && showNewBooking && (
-            <div style={s.newBookingForm}>
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Категория услуги</label>
-                <select
-                  value={newCategoryId}
-                  onChange={(e) => {
-                    setNewCategoryId(e.target.value);
-                    setNewServiceId("");
-                    setNewMasterId("");
-                    setSlots([]);
-                    setSelectedSlot(null);
-                  }}
-                  style={s.editInput}
-                >
-                  <option value="">Выберите категорию</option>
-                  {SERVICE_CATEGORY_OPTIONS.filter((opt) => {
-                    if (opt.value === "OTHER") return services.some((s) => !s.category);
-                    return services.some((s) => s.category === opt.value);
-                  }).map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Услуга</label>
-                <select
-                  value={newServiceId}
-                  onChange={(e) => { setNewServiceId(e.target.value); setSlots([]); setSelectedSlot(null); }}
-                  style={s.editInput}
-                  disabled={!newCategoryId}
-                >
-                  <option value="">{newCategoryId ? "Выберите услугу" : "Сначала выберите категорию"}</option>
-                  {servicesInCategory.map((sv) => (
-                    <option key={sv.id} value={sv.id}>{sv.name}{sv.durationMin != null ? ` (${sv.durationMin} мин)` : ""}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Мастер</label>
-                <select
-                  value={newMasterId}
-                  onChange={(e) => { setNewMasterId(e.target.value); setSlots([]); setSelectedSlot(null); }}
-                  style={s.editInput}
-                  disabled={!newServiceId}
-                >
-                  <option value="">{newServiceId ? (mastersForService.length === 0 ? "Нет мастеров для этой услуги" : "Выберите мастера") : "Сначала выберите услугу"}</option>
-                  {mastersForService.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Дата</label>
-                <input
-                  type="date"
-                  value={newDate}
-                  onChange={(e) => { setNewDate(e.target.value); setSlots([]); setSelectedSlot(null); }}
-                  style={s.editInput}
-                  min={dateMinMax.min}
-                  max={dateMinMax.max}
-                  title={`Доступна запись со следующего дня до ${dateMinMax.max}`}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={loadSlots}
-                disabled={!newServiceId || !newMasterId || !newDate || slotsLoading}
-                style={s.secondaryBtn}
-              >
-                {slotsLoading ? "Загрузка…" : "Загрузить слоты"}
-              </button>
-              {slotsError && <p style={s.saveError}>{slotsError}</p>}
-              {slots.length > 0 && (
-                <>
-                  <p style={s.slotLabel}>Выберите время:</p>
-                  <div style={s.slotGrid}>
-                    {slots.map((slot) => (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => setSelectedSlot(slot)}
-                        style={selectedSlot === slot ? s.slotBtnSelected : s.slotBtn}
-                      >
-                        {formatTime(slot)}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-              {selectedSlot && (
-                <>
-                  <p style={s.summaryText}>
-                    {formatDate(selectedSlot)}, {formatTime(selectedSlot)} — {services.find((s) => s.id === newServiceId)?.name ?? ""} — {masters.find((m) => m.id === newMasterId)?.name ?? ""}
-                  </p>
-                  {createError && <p style={s.saveError}>{createError}</p>}
-                  <button
-                    type="button"
-                    onClick={handleCreateBooking}
-                    disabled={createLoading}
-                    style={s.saveBtn}
-                  >
-                    {createLoading ? "Создание…" : "Создать запись"}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
           {(!showNewBooking || customer.activeBooking) && (bookings.length === 0 ? (
             <p style={s.msg}>У клиента пока нет записей.</p>
           ) : (
@@ -663,6 +748,20 @@ const s = {
     background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
   },
   backLinkWrap: { marginBottom: "16px" },
+  customerHeaderRow: {
+    display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px",
+  },
+  customerHeaderLeft: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" },
+  customerName: { margin: 0, fontSize: "20px", fontWeight: 700, color: "#111827" },
+  customerStatusBadge: {
+    padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: 500,
+    background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb",
+  },
+  phoneAction: {
+    background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: "14px", color: "#1a8c3a",
+    textDecoration: "underline", textUnderlineOffset: "2px",
+  },
+  phoneCopiedHint: { marginLeft: "8px", fontSize: "12px", color: "#1a8c3a" },
   backBtn: {
     padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
     background: "#fff", fontSize: "13px", cursor: "pointer", color: "#374151",
@@ -701,10 +800,20 @@ const s = {
     cursor: "pointer",
   },
   newBookingForm: { display: "flex", flexDirection: "column", gap: "12px", maxWidth: "400px", marginBottom: "16px" },
+  genderButtons: { display: "flex", gap: "8px", flexWrap: "wrap" },
+  genderBtn: {
+    padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    background: "#fff", fontSize: "14px", cursor: "pointer",
+  },
+  genderBtnSelected: {
+    padding: "8px 16px", border: "2px solid #1a8c3a", borderRadius: "8px",
+    background: "#f0fdf4", fontSize: "14px", cursor: "pointer",
+  },
   secondaryBtn: {
     padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
     background: "#fff", fontSize: "14px", cursor: "pointer", alignSelf: "flex-start",
   },
+  dateHint: { fontSize: "12px", color: "#6b7280", margin: "6px 0 0", lineHeight: 1.4 },
   slotLabel: { fontSize: "13px", fontWeight: 600, color: "#374151", margin: "8px 0 4px" },
   slotGrid: { display: "flex", flexWrap: "wrap", gap: "8px" },
   slotBtn: {
@@ -717,11 +826,13 @@ const s = {
   },
   summaryText: { fontSize: "14px", color: "#374151", margin: "8px 0" },
   activeBookingBlock: {
-    padding: "12px 16px", marginBottom: "16px", borderRadius: "8px",
-    background: "#fef3c7", border: "1px solid #f59e0b",
+    padding: "16px 20px", marginBottom: "16px", borderRadius: "8px",
+    background: "#fef3c7", border: "1px solid #f59e0b", borderLeft: "4px solid #d97706",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
   },
-  activeBookingTitle: { fontWeight: 600, margin: "0 0 6px", color: "#92400e", fontSize: "14px" },
-  activeBookingDetail: { margin: "0 0 10px", fontSize: "13px", color: "#374151" },
+  activeBookingIcon: { marginRight: "6px" },
+  activeBookingTitle: { fontWeight: 600, margin: "0 0 8px", color: "#92400e", fontSize: "14px" },
+  activeBookingDetail: { margin: "0 0 12px", fontSize: "13px", color: "#374151" },
   successMsg: { color: "#1a8c3a", fontSize: "14px", marginBottom: "8px" },
   th: {},
   tr: {},

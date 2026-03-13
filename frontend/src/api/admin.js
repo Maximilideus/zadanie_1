@@ -441,6 +441,27 @@ export async function getAdminCustomers(params = {}) {
   return res.json();
 }
 
+export async function createAdminCustomer(fields) {
+  const res = await fetch(`${API_BASE}/admin/customers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      name: fields.name,
+      phone: fields.phone,
+      notes: fields.notes ?? undefined,
+    }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401 || res.status === 403) clearAdminToken();
+    throw new Error(data.message || "Не удалось создать клиента");
+  }
+
+  const data = await res.json();
+  return data.customer;
+}
+
 export async function getAdminSubscriptions() {
   const res = await fetch(`${API_BASE}/admin/subscriptions`, {
     headers: authHeaders(),

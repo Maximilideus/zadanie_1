@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { adminLogout, getAdminCustomers } from "../api/admin.js";
+import { adminLogout, getAdminCustomers, createAdminCustomer } from "../api/admin.js";
 
 function formatDateTime(iso) {
   if (!iso) return "—";
@@ -23,6 +23,11 @@ export function AdminCustomersPage({ adminUser, onLogout }) {
   const [searchInput, setSearchInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [createName, setCreateName] = useState("");
+  const [createPhone, setCreatePhone] = useState("");
+  const [createNotes, setCreateNotes] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const loadCustomers = useCallback(async () => {
     setLoading(true);
@@ -57,6 +62,27 @@ export function AdminCustomersPage({ adminUser, onLogout }) {
   const totalPages = Math.ceil(total / limit) || 1;
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
+
+  const showNoResultsCreate = searchQ && items.length === 0 && !loading && !error;
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+    const name = createName.trim();
+    const phone = createPhone.trim();
+    if (!name || !phone) {
+      setCreateError("Укажите имя и телефон.");
+      return;
+    }
+    setCreateError("");
+    setCreating(true);
+    try {
+      const customer = await createAdminCustomer({ name, phone, notes: createNotes.trim() || undefined });
+      navigate(`/admin/customers/${customer.id}`);
+    } catch (err) {
+      setCreateError(err.message || "Не удалось создать клиента.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <div className="admin-layout" style={s.wrapper}>
@@ -100,9 +126,61 @@ export function AdminCustomersPage({ adminUser, onLogout }) {
           ) : error ? (
             <p style={{ ...s.msg, color: "#c44" }}>{error}</p>
           ) : items.length === 0 ? (
-            <p style={s.msg}>
-              {searchQ ? "По запросу клиентов не найдено." : "Клиентов пока нет."}
-            </p>
+            <div style={s.noResults}>
+              <p style={s.msg}>
+                {searchQ ? "По запросу клиентов не найдено." : "Клиентов пока нет."}
+              </p>
+              {showNoResultsCreate && (
+                <div style={s.createBlock}>
+                  <p style={s.createTitle}>Создать клиента</p>
+                  <form onSubmit={handleCreateSubmit} style={s.createForm}>
+                    <div style={s.createRow}>
+                      <label style={s.createLabel}>Имя *</label>
+                      <input
+                        type="text"
+                        value={createName}
+                        onChange={(e) => setCreateName(e.target.value)}
+                        placeholder="Имя"
+                        style={s.createInput}
+                        disabled={creating}
+                      />
+                    </div>
+                    <div style={s.createRow}>
+                      <label style={s.createLabel}>Телефон *</label>
+                      <input
+                        type="text"
+                        value={createPhone}
+                        onChange={(e) => setCreatePhone(e.target.value)}
+                        placeholder="Телефон"
+                        style={s.createInput}
+                        disabled={creating}
+                      />
+                    </div>
+                    <div style={s.createRow}>
+                      <label style={s.createLabel}>Заметки</label>
+                      <input
+                        type="text"
+                        value={createNotes}
+                        onChange={(e) => setCreateNotes(e.target.value)}
+                        placeholder="Заметки (необязательно)"
+                        style={s.createInput}
+                        disabled={creating}
+                      />
+                    </div>
+                    {createError && (
+                      <p style={s.createError}>{createError}</p>
+                    )}
+                    <button
+                        type="submit"
+                        disabled={creating || !createName.trim() || !createPhone.trim()}
+                        style={s.createBtn}
+                      >
+                        {creating ? "Создание…" : "Создать"}
+                      </button>
+                  </form>
+                </div>
+              )}
+            </div>
           ) : (
             <>
               <div style={s.count}>
@@ -206,6 +284,25 @@ const s = {
   },
   content: { padding: "24px", marginBottom: "24px" },
   msg: { color: "#6b7280", fontSize: "15px", textAlign: "center", padding: "32px 0" },
+  noResults: { padding: "32px 0" },
+  createBlock: {
+    maxWidth: "360px", margin: "0 auto", padding: "20px",
+    border: "1px solid #e5e7eb", borderRadius: "12px", background: "#fafafa",
+  },
+  createTitle: { margin: "0 0 16px", fontSize: "16px", fontWeight: 600, color: "#111827" },
+  createForm: { display: "flex", flexDirection: "column", gap: "12px" },
+  createRow: { display: "flex", flexDirection: "column", gap: "4px" },
+  createLabel: { fontSize: "13px", fontWeight: 500, color: "#374151" },
+  createInput: {
+    padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: "8px",
+    fontSize: "14px",
+  },
+  createError: { margin: 0, fontSize: "13px", color: "#c44" },
+  createBtn: {
+    padding: "10px 16px", border: "none", borderRadius: "8px",
+    background: "#1a8c3a", color: "#fff", fontSize: "14px", fontWeight: 600,
+    cursor: "pointer", marginTop: "4px",
+  },
   count: { fontSize: "13px", color: "#6b7280", marginBottom: "12px" },
   th: {},
   tr: {},

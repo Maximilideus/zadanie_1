@@ -411,7 +411,7 @@ export async function adminRoutes(app: FastifyInstance) {
 
   const customerCreateBody = z.object({
     name: z.string().min(1, "name обязательно"),
-    phone: z.string().nullable().optional(),
+    phone: z.string().min(1, "phone обязателен"),
     notes: z.string().nullable().optional(),
   })
 
@@ -427,25 +427,30 @@ export async function adminRoutes(app: FastifyInstance) {
       })
     }
     const { name, phone, notes } = body.data
-    const phoneVal = phone?.trim() || null
-    const normalizedPhone = phoneVal ? normalizePhone(phoneVal) : null
-    if (normalizedPhone && normalizedPhone.length > 0) {
-      const existing = await prisma.customer.findFirst({
-        where: { phone: normalizedPhone },
-        select: { id: true },
+    const phoneVal = phone.trim()
+    const normalizedPhone = normalizePhone(phoneVal)
+    if (!normalizedPhone || normalizedPhone.length === 0) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Bad Request",
+        message: "Некорректный номер телефона",
       })
-      if (existing) {
-        return reply.status(409).send({
-          statusCode: 409,
-          error: "Conflict",
-          message: "Customer with this phone already exists",
-        })
-      }
+    }
+    const existing = await prisma.customer.findFirst({
+      where: { phone: normalizedPhone },
+      select: { id: true },
+    })
+    if (existing) {
+      return reply.status(409).send({
+        statusCode: 409,
+        error: "Conflict",
+        message: "Клиент с таким телефоном уже существует",
+      })
     }
     const customer = await prisma.customer.create({
       data: {
         name: name.trim(),
-        phone: normalizedPhone?.length ? normalizedPhone : null,
+        phone: normalizedPhone,
         notes: notes?.trim() || null,
       },
     })
