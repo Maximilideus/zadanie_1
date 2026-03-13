@@ -493,8 +493,22 @@ export async function adminRoutes(app: FastifyInstance) {
       service: b.service ? { name: b.service.name } : null,
       master: b.masterId ? (masterMap[b.masterId] ? { name: masterMap[b.masterId].name } : null) : null,
     }))
+    const activeStatuses = ["PENDING", "CONFIRMED"] as const
+    const activeRaw = customer.bookings.find((b) => activeStatuses.includes(b.status as typeof activeStatuses[number]))
+    const activeBooking = activeRaw
+      ? {
+          id: activeRaw.id,
+          status: activeRaw.status,
+          scheduledAt: activeRaw.scheduledAt,
+          service: activeRaw.service ? { id: activeRaw.service.id, name: activeRaw.service.name } : null,
+          master:
+            activeRaw.masterId && masterMap[activeRaw.masterId]
+              ? { id: activeRaw.masterId, name: masterMap[activeRaw.masterId].name }
+              : null,
+        }
+      : null
     const { bookings: _b, ...customerData } = customer
-    return { customer: { ...customerData, bookings } }
+    return { customer: { ...customerData, bookings, activeBooking } }
   })
 
   // ── Customer update ───────────────────────────────────────────

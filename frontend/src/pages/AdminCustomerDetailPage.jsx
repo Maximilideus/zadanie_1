@@ -201,7 +201,12 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
       setSelectedSlot(null);
       await loadCustomer();
     } catch (e) {
-      setCreateError(e.message || "Не удалось создать запись");
+      const msg = e.message || "Не удалось создать запись";
+      setCreateError(msg);
+      if (msg.includes("активная запись")) {
+        await loadCustomer();
+        setShowNewBooking(false);
+      }
     } finally {
       setCreateLoading(false);
     }
@@ -466,16 +471,32 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
         <section className="admin-card" style={s.content}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h2 style={s.sectionTitle}>История записей</h2>
-            <button
-              type="button"
-              onClick={() => { setShowNewBooking(!showNewBooking); setCreateError(""); setSlotsError(""); setCreateSuccess(false); }}
-              style={s.newBookingBtn}
-            >
-              {showNewBooking ? "Отмена" : "Новая запись"}
-            </button>
+            {!customer.activeBooking && (
+              <button
+                type="button"
+                onClick={() => { setShowNewBooking(!showNewBooking); setCreateError(""); setSlotsError(""); setCreateSuccess(false); }}
+                style={s.newBookingBtn}
+              >
+                {showNewBooking ? "Отмена" : "Новая запись"}
+              </button>
+            )}
           </div>
+          {customer.activeBooking && (
+            <div style={s.activeBookingBlock}>
+              <p style={s.activeBookingTitle}>У клиента уже есть активная запись</p>
+              <p style={s.activeBookingDetail}>
+                {formatDate(customer.activeBooking.scheduledAt)}, {formatTime(customer.activeBooking.scheduledAt)}
+                {customer.activeBooking.service?.name ? ` · ${customer.activeBooking.service.name}` : ""}
+                {customer.activeBooking.master?.name ? ` · ${customer.activeBooking.master.name}` : ""}
+                {customer.activeBooking.status ? ` · ${STATUS_LABELS[customer.activeBooking.status] ?? customer.activeBooking.status}` : ""}
+              </p>
+              <button type="button" onClick={() => navigate("/admin/bookings")} style={s.secondaryBtn}>
+                Открыть запись
+              </button>
+            </div>
+          )}
           {createSuccess && <p style={s.successMsg}>Запись успешно создана.</p>}
-          {showNewBooking && (
+          {!customer.activeBooking && showNewBooking && (
             <div style={s.newBookingForm}>
               <div style={s.editRow}>
                 <label style={s.editLabel}>Категория услуги</label>
@@ -584,7 +605,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
             </div>
           )}
 
-          {!showNewBooking && (bookings.length === 0 ? (
+          {(!showNewBooking || customer.activeBooking) && (bookings.length === 0 ? (
             <p style={s.msg}>У клиента пока нет записей.</p>
           ) : (
             <div className="admin-table-wrap">
@@ -695,6 +716,12 @@ const s = {
     background: "#f0fdf4", fontSize: "13px", cursor: "pointer",
   },
   summaryText: { fontSize: "14px", color: "#374151", margin: "8px 0" },
+  activeBookingBlock: {
+    padding: "12px 16px", marginBottom: "16px", borderRadius: "8px",
+    background: "#fef3c7", border: "1px solid #f59e0b",
+  },
+  activeBookingTitle: { fontWeight: 600, margin: "0 0 6px", color: "#92400e", fontSize: "14px" },
+  activeBookingDetail: { margin: "0 0 10px", fontSize: "13px", color: "#374151" },
   successMsg: { color: "#1a8c3a", fontSize: "14px", marginBottom: "8px" },
   th: {},
   tr: {},
