@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   adminLogout,
@@ -21,6 +21,14 @@ const SOURCE_LABELS = {
   BOT: "Бот",
   ADMIN: "Админ",
 };
+
+const SERVICE_CATEGORY_OPTIONS = [
+  { value: "LASER", label: "Лазер" },
+  { value: "WAX", label: "Воск" },
+  { value: "ELECTRO", label: "Электро" },
+  { value: "MASSAGE", label: "Массаж" },
+  { value: "OTHER", label: "Прочее" },
+];
 
 function formatDate(iso) {
   if (!iso) return "—";
@@ -74,6 +82,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
   const [showNewBooking, setShowNewBooking] = useState(false);
   const [services, setServices] = useState([]);
   const [masters, setMasters] = useState([]);
+  const [newCategoryId, setNewCategoryId] = useState("");
   const [newServiceId, setNewServiceId] = useState("");
   const [newMasterId, setNewMasterId] = useState("");
   const [newDate, setNewDate] = useState("");
@@ -121,6 +130,32 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
     }
   }, [showNewBooking, services.length, masters.length]);
 
+  const servicesInCategory = useMemo(() => {
+    if (!newCategoryId) return [];
+    if (newCategoryId === "OTHER") return services.filter((s) => !s.category);
+    return services.filter((s) => s.category === newCategoryId);
+  }, [services, newCategoryId]);
+
+  const mastersForService = useMemo(() => {
+    if (!newServiceId) return masters;
+    return masters.filter((m) => Array.isArray(m.serviceIds) && m.serviceIds.includes(newServiceId));
+  }, [masters, newServiceId]);
+
+  useEffect(() => {
+    if (!newServiceId || !newMasterId) return;
+    const canDo = mastersForService.some((m) => m.id === newMasterId);
+    if (!canDo) setNewMasterId("");
+  }, [newServiceId, mastersForService, newMasterId]);
+
+  const dateMinMax = useMemo(() => {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const max = new Date(today);
+    max.setDate(max.getDate() + 60);
+    return { min: tomorrow.toISOString().slice(0, 10), max: max.toISOString().slice(0, 10) };
+  }, []);
+
   const loadSlots = async () => {
     if (!newServiceId || !newMasterId || !newDate) return;
     setSlotsLoading(true);
@@ -130,7 +165,12 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
     try {
       const data = await getAdminAvailability({ serviceId: newServiceId, masterId: newMasterId, date: newDate });
       setSlots(data.slots ?? []);
-      if ((data.slots ?? []).length === 0) setSlotsError("На эту дату нет доступных слотов.");
+      if ((data.slots ?? []).length === 0) {
+        const reason = data.unavailableReason;
+        if (reason === "NO_WORKING_HOURS") setSlotsError("Мастер не работает в этот день.");
+        else if (reason === "NO_FREE_SLOTS") setSlotsError("Нет свободных слотов на выбранную дату.");
+        else setSlotsError("На эту дату нет доступных слотов.");
+      }
     } catch (e) {
       setSlotsError(e.message || "Не удалось загрузить слоты");
       setSlots([]);
@@ -153,6 +193,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
       });
       setCreateSuccess(true);
       setShowNewBooking(false);
+      setNewCategoryId("");
       setNewServiceId("");
       setNewMasterId("");
       setNewDate("");
@@ -437,14 +478,37 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
           {showNewBooking && (
             <div style={s.newBookingForm}>
               <div style={s.editRow}>
+                <label style={s.editLabel}>Категория услуги</label>
+                <select
+                  value={newCategoryId}
+                  onChange={(e) => {
+                    setNewCategoryId(e.target.value);
+                    setNewServiceId("");
+                    setNewMasterId("");
+                    setSlots([]);
+                    setSelectedSlot(null);
+                  }}
+                  style={s.editInput}
+                >
+                  <option value="">Выберите категорию</option>
+                  {SERVICE_CATEGORY_OPTIONS.filter((opt) => {
+                    if (opt.value === "OTHER") return services.some((s) => !s.category);
+                    return services.some((s) => s.category === opt.value);
+                  }).map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={s.editRow}>
                 <label style={s.editLabel}>Услуга</label>
                 <select
                   value={newServiceId}
                   onChange={(e) => { setNewServiceId(e.target.value); setSlots([]); setSelectedSlot(null); }}
                   style={s.editInput}
+                  disabled={!newCategoryId}
                 >
-                  <option value="">Выберите услугу</option>
-                  {services.map((sv) => (
+                  <option value="">{newCategoryId ? "Выберите услугу" : "Сначала выберите категорию"}</option>
+                  {servicesInCategory.map((sv) => (
                     <option key={sv.id} value={sv.id}>{sv.name}{sv.durationMin != null ? ` (${sv.durationMin} мин)` : ""}</option>
                   ))}
                 </select>
@@ -455,9 +519,10 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
                   value={newMasterId}
                   onChange={(e) => { setNewMasterId(e.target.value); setSlots([]); setSelectedSlot(null); }}
                   style={s.editInput}
+                  disabled={!newServiceId}
                 >
-                  <option value="">Выберите мастера</option>
-                  {masters.map((m) => (
+                  <option value="">{newServiceId ? (mastersForService.length === 0 ? "Нет мастеров для этой услуги" : "Выберите мастера") : "Сначала выберите услугу"}</option>
+                  {mastersForService.map((m) => (
                     <option key={m.id} value={m.id}>{m.name}</option>
                   ))}
                 </select>
@@ -469,6 +534,9 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
                   value={newDate}
                   onChange={(e) => { setNewDate(e.target.value); setSlots([]); setSelectedSlot(null); }}
                   style={s.editInput}
+                  min={dateMinMax.min}
+                  max={dateMinMax.max}
+                  title={`Доступна запись со следующего дня до ${dateMinMax.max}`}
                 />
               </div>
               <button

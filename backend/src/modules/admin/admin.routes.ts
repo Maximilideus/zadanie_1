@@ -766,6 +766,7 @@ export async function adminRoutes(app: FastifyInstance) {
         })
       }
 
+      const now = new Date()
       const booking = await prisma.booking.create({
         data: {
           userId: null,
@@ -775,7 +776,8 @@ export async function adminRoutes(app: FastifyInstance) {
           masterId,
           locationId: service.locationId,
           scheduledAt: parsedScheduledAt,
-          status: "PENDING",
+          status: "CONFIRMED",
+          confirmedAt: now,
         },
         select: {
           id: true,

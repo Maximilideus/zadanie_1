@@ -12,9 +12,13 @@ export interface GetAvailableSlotsParams {
   date: string
 }
 
+export type UnavailableReason = "NO_WORKING_HOURS" | "NO_FREE_SLOTS"
+
 export interface AvailableSlotsResult {
   timezone: string
   slots: string[]
+  /** Set when slots is empty so UI can show a specific message */
+  unavailableReason?: UnavailableReason
 }
 
 type Interval = { start: DateTime; end: DateTime }
@@ -87,7 +91,7 @@ export async function getAvailableSlots(
     if (process.env.NODE_ENV !== "production") {
       console.debug("[availability] masterId=%s date=%s dayOfWeek=%s masterRows=0 → 0 slots (no fallback to null-master rows)", masterId, date, dayOfWeek)
     }
-    return { timezone, slots: [] }
+    return { timezone, slots: [], unavailableReason: "NO_WORKING_HOURS" }
   }
   if (process.env.NODE_ENV !== "production") {
     console.debug("[availability] masterId=%s date=%s masterRows=%s", masterId, date, workingHours.length)
@@ -192,5 +196,7 @@ export async function getAvailableSlots(
   if (process.env.NODE_ENV !== "production") {
     console.debug("[availability] masterId=%s date=%s slots=%s", masterId, date, slotsUtc.length)
   }
-  return { timezone, slots: slotsUtc }
+  const unavailableReason =
+    slotsUtc.length === 0 ? ("NO_FREE_SLOTS" as const) : undefined
+  return { timezone, slots: slotsUtc, unavailableReason }
 }
