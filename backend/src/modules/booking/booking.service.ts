@@ -407,6 +407,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
         displayName: getServiceDisplayName(s.name),
         durationMin: s.durationMin,
         isElectroTimePackage: s.category === "ELECTRO" && s.groupKey === "time",
+        category: s.category ?? undefined,
       },
     ])
   )
@@ -435,6 +436,7 @@ export async function getUpcomingBookingsByTelegramId(telegramId: string) {
             zone: zone ?? undefined,
             durationMin: svc.durationMin,
             isElectroTimePackage: svc.isElectroTimePackage,
+            category: svc.category,
           }
         : { name: "—", displayName: "—", durationMin: undefined as number | undefined },
       masterName: b.masterId ? masterByName[b.masterId] ?? "—" : "—",

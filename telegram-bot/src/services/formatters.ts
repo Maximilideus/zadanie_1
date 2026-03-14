@@ -130,7 +130,13 @@ export function formatBookingSummary(input: {
 }
 
 export type BookingCardInput = {
-  service: ServiceLike & { displayName?: string; zone?: string; isElectroTimePackage?: boolean }
+  service: ServiceLike & {
+    displayName?: string
+    zone?: string
+    isElectroTimePackage?: boolean
+    /** When present, "Услуга" line uses category-based mapping instead of service.name. */
+    category?: string
+  }
   masterName: string
   scheduledAt: Date | string
 }
@@ -171,15 +177,31 @@ export function formatBookingBlock(parts: BookingBlockParts): string {
 }
 
 /**
- * Booking card: always shows procedure type on "Услуга" line (never zone).
- * Uses service.name to derive procedure type; zone from service.zone.
- * ELECTRO: never show zone line (time-based only).
+ * Service type label for "Услуга" line from category (and optional service name for MASSAGE).
+ * Use this when category is available; do not derive from service.name/zone labels.
+ */
+export function mapCategoryToServiceType(category?: string, serviceName?: string): string {
+  return getProcedureTypeForSession(category, serviceName)
+}
+
+/**
+ * Booking card: "Услуга" line from category when present, else fallback from service.name.
+ * Zone from service.zone; ELECTRO and MASSAGE never show zone line.
  */
 export function formatBookingCard(booking: BookingCardInput): string {
-  const procedureType = formatServiceNameOnly(booking.service)
-  const rawName = (booking.service.name ?? "").trim()
-  const isElectro = rawName.toLowerCase().startsWith("electro")
-  const zone = isElectro ? undefined : (booking.service as { zone?: string }).zone
+  const cat = normalizeCategory(booking.service.category)
+  const procedureType =
+    cat === "MASSAGE"
+      ? formatServiceNameOnly(booking.service)
+      : cat != null
+        ? mapCategoryToServiceType(booking.service.category ?? undefined, booking.service.name)
+        : formatServiceNameOnly(booking.service)
+  const isElectro =
+    cat === "ELECTRO" ||
+    booking.service.isElectroTimePackage === true ||
+    (booking.service.name ?? "").trim().toLowerCase().startsWith("electro")
+  const suppressZone = isElectro || cat === "MASSAGE"
+  const zone = suppressZone ? undefined : (booking.service as { zone?: string }).zone
   const durationMin = booking.service.durationMin
   const master = formatMasterDisplayName(booking.masterName)
   const date = formatBookingDate(booking.scheduledAt)
@@ -188,7 +210,7 @@ export function formatBookingCard(booking: BookingCardInput): string {
     procedureType,
     zone,
     durationMin,
-    suppressZone: isElectro,
+    suppressZone,
     masterName: master,
     date,
     time,

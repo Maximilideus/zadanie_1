@@ -229,13 +229,14 @@ function isSessionReadyForConfirm(session: BookingSession): boolean {
 function sessionToCardParts(session: BookingSession, dateStr?: string, timeStr?: string) {
   const cat = normalizeCategory(session.category)
   const isElectro = cat === "ELECTRO"
-  const zone = isElectro ? undefined : (session.catalogElectroZone ?? session.catalogTitle) || undefined
+  const suppressZone = isElectro || cat === "MASSAGE"
+  const zone = suppressZone ? undefined : (session.catalogElectroZone ?? session.catalogTitle) || undefined
   const procedureType = getProcedureTypeForSession(session.category, session.serviceName)
   return {
     serviceName: procedureType,
     zone,
     durationMin: session.durationMin,
-    suppressZone: isElectro,
+    suppressZone,
     masterName: session.masterName ?? "—",
     date: dateStr ? formatBookingDate(dateStr + "T12:00:00Z") : (session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—"),
     time: timeStr ?? session.timeStr ?? "—",

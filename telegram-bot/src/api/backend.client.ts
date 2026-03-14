@@ -87,6 +87,8 @@ export interface UpcomingBookingItem {
     zone?: string
     durationMin?: number
     isElectroTimePackage?: boolean
+    /** Category for display: LASER | WAX | ELECTRO | MASSAGE. Used for "Услуга" line. */
+    category?: string
   }
   masterName: string
 }
