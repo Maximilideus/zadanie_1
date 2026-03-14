@@ -1,5 +1,7 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/dist/style.css";
 import {
   adminLogout,
   getAdminCustomer,
@@ -9,6 +11,21 @@ import {
   getAdminAvailability,
   createAdminBooking,
 } from "../api/admin.js";
+
+/** Timezone-safe: format a local Date to YYYY-MM-DD. */
+function localDateToStr(date) {
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/** Timezone-safe: parse YYYY-MM-DD to a local Date (noon to avoid DST edge). */
+function dateStrToLocalDate(str) {
+  if (!str) return undefined;
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
 
 const STATUS_LABELS = {
   PENDING: "Ожидает",
@@ -99,6 +116,7 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [slotsError, setSlotsError] = useState("");
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const slotsRequestKeyRef = useRef("");
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState(false);
@@ -178,14 +196,72 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
     return { min: tomorrow.toISOString().slice(0, 10), max: max.toISOString().slice(0, 10) };
   }, []);
 
-  const loadSlots = async () => {
+  const selectedMaster = useMemo(
+    () => (newMasterId ? masters.find((m) => m.id === newMasterId) : null),
+    [masters, newMasterId]
+  );
+
+  const masterWorkingDayOfWeeks = useMemo(() => {
+    const wh = selectedMaster?.workingHours;
+    if (!Array.isArray(wh) || wh.length === 0) return new Set();
+    return new Set(wh.map((row) => row.dayOfWeek));
+  }, [selectedMaster]);
+
+  const blockedDateSet = useMemo(() => {
+    const exc = selectedMaster?.exceptions;
+    if (!Array.isArray(exc) || exc.length === 0) return new Set();
+    const set = new Set();
+    const { min, max } = dateMinMax;
+    const addDay = (dateStr) => {
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const next = new Date(y, m - 1, d + 1);
+      return next.getFullYear() + "-" + String(next.getMonth() + 1).padStart(2, "0") + "-" + String(next.getDate()).padStart(2, "0");
+    };
+    for (const e of exc) {
+      const from = e.date;
+      const to = e.dateTo ?? e.date;
+      if (!from) continue;
+      let d = from;
+      while (d <= to) {
+        if (d >= min && d <= max) set.add(d);
+        d = addDay(d);
+      }
+    }
+    return set;
+  }, [selectedMaster, dateMinMax]);
+
+  function isDateStructurallyUnavailable(dateStr) {
+    if (!dateStr || !selectedMaster) return false;
+    const d = new Date(dateStr + "T12:00:00");
+    const jsDay = d.getDay();
+    const backendDayOfWeek = jsDay === 0 ? 7 : jsDay;
+    if (masterWorkingDayOfWeeks.size > 0 && !masterWorkingDayOfWeeks.has(backendDayOfWeek)) return true;
+    if (blockedDateSet.has(dateStr)) return true;
+    return false;
+  }
+
+  const selectedMasterStructuralHint = useMemo(() => {
+    if (!selectedMaster) return "";
+    const dayLabels = { 1: "пн", 2: "вт", 3: "ср", 4: "чт", 5: "пт", 6: "сб", 7: "вс" };
+    const nonWorking = [1, 2, 3, 4, 5, 6, 7].filter((d) => !masterWorkingDayOfWeeks.has(d));
+    if (nonWorking.length === 0 && blockedDateSet.size === 0) return "";
+    const parts = [];
+    if (nonWorking.length > 0) parts.push(`Мастер не работает по: ${nonWorking.map((d) => dayLabels[d]).join(", ")}.`);
+    if (blockedDateSet.size > 0) parts.push("Выходные и отпуск также недоступны.");
+    return parts.join(" ");
+  }, [selectedMaster, masterWorkingDayOfWeeks, blockedDateSet]);
+
+  const loadSlots = useCallback(async () => {
     if (!newServiceId || !newMasterId || !newDate) return;
+    const requestKey = `${newServiceId}-${newMasterId}-${newDate}`;
+    slotsRequestKeyRef.current = requestKey;
     setSlotsLoading(true);
     setSlotsError("");
     setSlots([]);
     setSelectedSlot(null);
     try {
       const data = await getAdminAvailability({ serviceId: newServiceId, masterId: newMasterId, date: newDate });
+      if (slotsRequestKeyRef.current !== requestKey) return;
       setSlots(data.slots ?? []);
       if ((data.slots ?? []).length === 0) {
         const reason = data.unavailableReason;
@@ -195,12 +271,28 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
         else setSlotsError("На эту дату нет доступных слотов.");
       }
     } catch (e) {
+      if (slotsRequestKeyRef.current !== requestKey) return;
       setSlotsError(e.message || "Не удалось загрузить слоты");
       setSlots([]);
     } finally {
-      setSlotsLoading(false);
+      if (slotsRequestKeyRef.current === requestKey) setSlotsLoading(false);
     }
-  };
+  }, [newServiceId, newMasterId, newDate]);
+
+  useEffect(() => {
+    if (!newServiceId || !newMasterId || !newDate) return;
+    loadSlots();
+  }, [newServiceId, newMasterId, newDate, loadSlots]);
+
+  useEffect(() => {
+    if (!newDate || !selectedMaster) return;
+    if (isDateStructurallyUnavailable(newDate)) {
+      setNewDate("");
+      setSlots([]);
+      setSelectedSlot(null);
+      setSlotsError("Мастер не работает в этот день.");
+    }
+  }, [newDate, selectedMaster, masterWorkingDayOfWeeks, blockedDateSet]);
 
   const handleCreateBooking = async () => {
     if (!id || !newServiceId || !newMasterId || !selectedSlot) return;
@@ -403,106 +495,118 @@ export function AdminCustomerDetailPage({ adminUser, onLogout }) {
         {!customer.activeBooking && showNewBooking && (
           <section className="admin-card" style={s.content}>
             <div style={s.newBookingForm}>
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Категория услуги</label>
-                <select
-                  value={newCategoryId}
-                  onChange={(e) => {
-                    setNewCategoryId(e.target.value);
-                    setSelectedGender("");
-                    setNewServiceId("");
-                    setNewMasterId("");
-                    setSlots([]);
-                    setSelectedSlot(null);
-                  }}
-                  style={s.editInput}
-                >
-                  <option value="">Выберите категорию</option>
-                  {SERVICE_CATEGORY_OPTIONS.filter((opt) => {
-                    if (opt.value === "OTHER") return services.some((s) => !s.category);
-                    return services.some((s) => s.category === opt.value);
-                  }).map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-              {categoryHasGenderedServices && (
-                <div style={s.editRow}>
-                  <label style={s.editLabel}>Для кого</label>
-                  <div style={s.genderButtons}>
-                    <button
-                      type="button"
-                      onClick={() => { setSelectedGender("FEMALE"); setNewServiceId(""); setNewMasterId(""); setSlots([]); setSelectedSlot(null); }}
-                      style={selectedGender === "FEMALE" ? s.genderBtnSelected : s.genderBtn}
+              <div style={s.newBookingFormRow}>
+                <div style={s.newBookingFormLeft}>
+                  <div style={s.editRow}>
+                    <label style={s.editLabel}>Категория услуги</label>
+                    <select
+                      value={newCategoryId}
+                      onChange={(e) => {
+                        setNewCategoryId(e.target.value);
+                        setSelectedGender("");
+                        setNewServiceId("");
+                        setNewMasterId("");
+                        setSlots([]);
+                        setSelectedSlot(null);
+                      }}
+                      style={s.editInput}
                     >
-                      Женщина
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setSelectedGender("MALE"); setNewServiceId(""); setNewMasterId(""); setSlots([]); setSelectedSlot(null); }}
-                      style={selectedGender === "MALE" ? s.genderBtnSelected : s.genderBtn}
+                      <option value="">Выберите категорию</option>
+                      {SERVICE_CATEGORY_OPTIONS.filter((opt) => {
+                        if (opt.value === "OTHER") return services.some((s) => !s.category);
+                        return services.some((s) => s.category === opt.value);
+                      }).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {categoryHasGenderedServices && (
+                    <div style={s.editRow}>
+                      <label style={s.editLabel}>Для кого</label>
+                      <div style={s.genderButtons}>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedGender("FEMALE"); setNewServiceId(""); setNewMasterId(""); setSlots([]); setSelectedSlot(null); }}
+                          style={selectedGender === "FEMALE" ? s.genderBtnSelected : s.genderBtn}
+                        >
+                          Женщина
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedGender("MALE"); setNewServiceId(""); setNewMasterId(""); setSlots([]); setSelectedSlot(null); }}
+                          style={selectedGender === "MALE" ? s.genderBtnSelected : s.genderBtn}
+                        >
+                          Мужчина
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div style={s.editRow}>
+                    <label style={s.editLabel}>Услуга</label>
+                    <select
+                      value={newServiceId}
+                      onChange={(e) => { setNewServiceId(e.target.value); setSlots([]); setSelectedSlot(null); }}
+                      style={s.editInput}
+                      disabled={!newCategoryId || (categoryHasGenderedServices && !selectedGender)}
                     >
-                      Мужчина
-                    </button>
+                      <option value="">
+                        {!newCategoryId ? "Сначала выберите категорию" : categoryHasGenderedServices && !selectedGender ? "Сначала выберите пол" : "Выберите услугу"}
+                      </option>
+                      {servicesFiltered.map((sv) => (
+                        <option key={sv.id} value={sv.id}>{sv.name}{sv.durationMin != null ? ` (${sv.durationMin} мин)` : ""}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={s.editRow}>
+                    <label style={s.editLabel}>Мастер</label>
+                    <select
+                      value={newMasterId}
+                      onChange={(e) => { setNewMasterId(e.target.value); setSlots([]); setSelectedSlot(null); }}
+                      style={s.editInput}
+                      disabled={!newServiceId}
+                    >
+                      <option value="">{newServiceId ? (mastersForService.length === 0 ? "Нет мастеров для этой услуги" : "Выберите мастера") : "Сначала выберите услугу"}</option>
+                      {mastersForService.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              )}
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Услуга</label>
-                <select
-                  value={newServiceId}
-                  onChange={(e) => { setNewServiceId(e.target.value); setSlots([]); setSelectedSlot(null); }}
-                  style={s.editInput}
-                  disabled={!newCategoryId || (categoryHasGenderedServices && !selectedGender)}
-                >
-                  <option value="">
-                    {!newCategoryId ? "Сначала выберите категорию" : categoryHasGenderedServices && !selectedGender ? "Сначала выберите пол" : "Выберите услугу"}
-                  </option>
-                  {servicesFiltered.map((sv) => (
-                    <option key={sv.id} value={sv.id}>{sv.name}{sv.durationMin != null ? ` (${sv.durationMin} мин)` : ""}</option>
-                  ))}
-                </select>
+                <div style={s.newBookingFormRight}>
+                  <p style={s.datePickerHeading}>Выберите дату</p>
+                  <div style={s.datePickerWrap} title={`Выберите дату (со следующего дня по ${dateMinMax.max})`}>
+                    <DayPicker
+                      mode="single"
+                      selected={newDate ? dateStrToLocalDate(newDate) : undefined}
+                      onSelect={(day) => {
+                        if (!day) return;
+                        const str = localDateToStr(day);
+                        if (isDateStructurallyUnavailable(str)) {
+                          setNewDate("");
+                          setSlots([]);
+                          setSelectedSlot(null);
+                          setSlotsError("Мастер не работает в этот день.");
+                          return;
+                        }
+                        setSlotsError("");
+                        setNewDate(str);
+                        setSlots([]);
+                        setSelectedSlot(null);
+                      }}
+                      fromDate={dateStrToLocalDate(dateMinMax.min)}
+                      toDate={dateStrToLocalDate(dateMinMax.max)}
+                      disabled={(day) => isDateStructurallyUnavailable(localDateToStr(day))}
+                      defaultMonth={newDate ? dateStrToLocalDate(newDate) : dateStrToLocalDate(dateMinMax.min)}
+                      weekStartsOn={1}
+                    />
+                  </div>
+                  <p style={s.dateHint}>
+                    {selectedMasterStructuralHint
+                      ? `${selectedMasterStructuralHint} Выберите дату — слоты загрузятся автоматически.`
+                      : "Выберите дату — слоты загрузятся автоматически."}
+                  </p>
+                </div>
               </div>
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Мастер</label>
-                <select
-                  value={newMasterId}
-                  onChange={(e) => { setNewMasterId(e.target.value); setSlots([]); setSelectedSlot(null); }}
-                  style={s.editInput}
-                  disabled={!newServiceId}
-                >
-                  <option value="">{newServiceId ? (mastersForService.length === 0 ? "Нет мастеров для этой услуги" : "Выберите мастера") : "Сначала выберите услугу"}</option>
-                  {mastersForService.map((m) => (
-                    <option key={m.id} value={m.id}>{m.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={s.editRow}>
-                <label style={s.editLabel}>Дата</label>
-                <input
-                  type="date"
-                  value={newDate}
-                  onChange={(e) => { setNewDate(e.target.value); setSlots([]); setSelectedSlot(null); setSlotsError(""); }}
-                  onKeyDown={(e) => {
-                    if (["Tab", "Escape", "Enter", " "].includes(e.key)) return;
-                    e.preventDefault();
-                  }}
-                  style={s.editInput}
-                  autoComplete="off"
-                  min={dateMinMax.min}
-                  max={dateMinMax.max}
-                  title={`Выберите дату в календаре (со следующего дня по ${dateMinMax.max})`}
-                />
-                <p style={s.dateHint}>Выберите дату в календаре. Затем нажмите «Загрузить слоты» — доступность покажет слоты или подсказку.</p>
-              </div>
-              <button
-                type="button"
-                onClick={loadSlots}
-                disabled={!newServiceId || !newMasterId || !newDate || slotsLoading}
-                style={s.secondaryBtn}
-              >
-                {slotsLoading ? "Загрузка…" : "Загрузить слоты"}
-              </button>
               {slotsError && <p style={s.saveError}>{slotsError}</p>}
               {slots.length > 0 && (
                 <>
@@ -799,7 +903,29 @@ const s = {
     background: "#fff", color: "#1a8c3a", fontSize: "14px", fontWeight: 600,
     cursor: "pointer",
   },
-  newBookingForm: { display: "flex", flexDirection: "column", gap: "12px", maxWidth: "400px", marginBottom: "16px" },
+  newBookingForm: { display: "flex", flexDirection: "column", gap: "16px", marginBottom: "16px" },
+  newBookingFormRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "24px",
+    alignItems: "flex-start",
+  },
+  newBookingFormLeft: {
+    flex: "1 1 280px",
+    minWidth: "280px",
+    maxWidth: "400px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  newBookingFormRight: {
+    flex: "1 1 280px",
+    minWidth: "260px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  datePickerHeading: { fontSize: "12px", fontWeight: 600, color: "#6b7280", margin: "0 0 4px" },
   genderButtons: { display: "flex", gap: "8px", flexWrap: "wrap" },
   genderBtn: {
     padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
@@ -813,6 +939,7 @@ const s = {
     padding: "8px 16px", border: "1px solid #e5e7eb", borderRadius: "8px",
     background: "#fff", fontSize: "14px", cursor: "pointer", alignSelf: "flex-start",
   },
+  datePickerWrap: { marginTop: "4px" },
   dateHint: { fontSize: "12px", color: "#6b7280", margin: "6px 0 0", lineHeight: 1.4 },
   slotLabel: { fontSize: "13px", fontWeight: 600, color: "#374151", margin: "8px 0 4px" },
   slotGrid: { display: "flex", flexWrap: "wrap", gap: "8px" },
