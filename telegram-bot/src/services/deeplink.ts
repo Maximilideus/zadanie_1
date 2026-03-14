@@ -2,6 +2,7 @@ import {
   getCatalogItemById,
   type CatalogItemResponse,
 } from "../api/backend.client.js"
+import { normalizeCategory } from "./formatters.js"
 
 const CI_PREFIX = "ci_"
 
@@ -33,18 +34,18 @@ export async function resolveCatalogDeepLink(catalogItemId: string): Promise<Dee
   return { ok: true, item, serviceId: item.serviceId }
 }
 
+/**
+ * Unified catalog intro for "Вы выбрали" block. Used by deep link and catalog flow.
+ * Style: procedure type (📋), zone (📍) only for LASER/WAX/MASSAGE, duration (⏱), price (💳).
+ * ELECTRO: never show zone line (time-based only).
+ */
 export function formatCatalogIntro(item: CatalogItemResponse): string {
-  const isElectroTime = item.category === "ELECTRO" && item.groupKey === "time"
-  const lines = ["Вы выбрали:", ""]
-  if (isElectroTime) {
-    lines.push("📋 Услуга: Электроэпиляция")
-    if (item.durationMin != null) lines.push(`⏱ Длительность: ${item.durationMin} мин`)
-  } else {
-    const category = CATEGORY_LABELS[item.category] ?? item.category
-    lines.push(category)
-    lines.push(`Зона: ${item.titleRu}`)
-    if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
-  }
-  if (item.price != null) lines.push(`Цена: ${item.price} ₽`)
+  const cat = normalizeCategory(item.category)
+  const procedureType = (cat && CATEGORY_LABELS[cat]) ?? item.category
+  const lines = ["Вы выбрали", ""]
+  lines.push(`📋 ${procedureType}`)
+  if (cat !== "ELECTRO" && item.titleRu) lines.push(`📍 ${item.titleRu}`)
+  if (item.durationMin != null) lines.push(`⏱ ${item.durationMin} мин`)
+  if (item.price != null) lines.push(`💳 ${item.price.toLocaleString("ru-RU")} ₽`)
   return lines.join("\n")
 }

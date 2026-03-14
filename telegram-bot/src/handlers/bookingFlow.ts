@@ -25,8 +25,10 @@ import {
   formatBookingTime,
   formatBookingCard,
   formatBookingCardFromParts,
+  formatBookingBlock,
   formatMasterDisplayName,
-  stripTrailingDuration,
+  getProcedureTypeForSession,
+  normalizeCategory,
 } from "../services/formatters.js"
 import type { ConfirmState } from "../session/bookingFlowSession.js"
 import { SALON_TIMEZONE } from "../config/salon.js"
@@ -225,13 +227,15 @@ function isSessionReadyForConfirm(session: BookingSession): boolean {
 }
 
 function sessionToCardParts(session: BookingSession, dateStr?: string, timeStr?: string) {
-  const isElectroTime = session.category === "ELECTRO" && session.catalogGroupKey === "time"
-  const zone = session.catalogElectroZone ?? session.catalogTitle
+  const cat = normalizeCategory(session.category)
+  const isElectro = cat === "ELECTRO"
+  const zone = isElectro ? undefined : (session.catalogElectroZone ?? session.catalogTitle) || undefined
+  const procedureType = getProcedureTypeForSession(session.category, session.serviceName)
   return {
-    serviceName: stripTrailingDuration(session.serviceName ?? "—"),
-    zone: zone || undefined,
+    serviceName: procedureType,
+    zone,
     durationMin: session.durationMin,
-    isElectroTimePackage: isElectroTime && !!zone,
+    suppressZone: isElectro,
     masterName: session.masterName ?? "—",
     date: dateStr ? formatBookingDate(dateStr + "T12:00:00Z") : (session.dateStr ? formatBookingDate(session.dateStr + "T12:00:00Z") : "—"),
     time: timeStr ?? session.timeStr ?? "—",
@@ -351,15 +355,17 @@ async function showNearestSlotScreen(
   scheduledAtIso: string,
 ): Promise<void> {
   const session = getBookingSession(telegramId)
-  const dateLabel = formatBookingDate(scheduledAtIso)
-  const timeLabel = formatBookingTime(scheduledAtIso)
+  const dateStr = dateStrInSalonTz(new Date(scheduledAtIso))
+  const timeStr = formatBookingTime(scheduledAtIso)
+  const block = formatBookingCardFromParts({
+    ...sessionToCardParts(session),
+    date: formatBookingDate(scheduledAtIso),
+    time: timeStr,
+  })
   const text =
-    buildSummary(session) +
+    block +
     "\n\n" +
-    `Для мастера ${masterName} нашли ближайшее свободное время:\n\n` +
-    `📅 ${dateLabel}\n` +
-    `⏰ ${timeLabel}\n\n` +
-    "Если вам подходит — можно записаться сразу.\nЕсли нет — выберите дату и время вручную."
+    "Ближайшее свободное время.\nВы можете записаться сейчас или выбрать другую дату."
   const keyboard = new InlineKeyboard()
     .text("⚡ Записаться на ближайшее", `nearest:${scheduledAtIso}`)
     .row()
@@ -958,11 +964,20 @@ export async function onTimeSlotChosen(ctx: Context, scheduledAtIso: string): Pr
 }
 
 function buildConfirmText(session: BookingSession): string {
-  const card = formatBookingCardFromParts(sessionToCardParts(session))
-  const lines = ["Проверьте данные записи\n", card]
-  if (session.price != null) lines.push("", `Цена: ${session.price} ₽`)
-  lines.push("", "Запись будет создана и ожидать подтверждения салоном.")
-  lines.push("После подтверждения изменить время или мастера нельзя — только отменить и оформить заново.")
+  const parts = sessionToCardParts(session)
+  const card = session.price != null
+    ? formatBookingBlock({
+        procedureType: parts.serviceName,
+        zone: parts.zone,
+        durationMin: parts.durationMin,
+        suppressZone: parts.suppressZone,
+        masterName: parts.masterName,
+        date: parts.date,
+        time: parts.time,
+        price: session.price,
+      })
+    : formatBookingCardFromParts(parts)
+  const lines = ["Проверьте данные записи\n", card, "", "Ожидает подтверждения администратора."]
   return lines.join("\n")
 }
 
@@ -1116,7 +1131,7 @@ export async function onConfirmBooking(ctx: Context, scheduledAtIso: string): Pr
   clearBookingSession(telegramId)
   console.log("[wizard] booking confirmed and created")
   await ctx.editMessageText(
-    "Запись создана и ожидает подтверждения администратора.\n\n" + card + "\n\nМои записи: /my_bookings"
+    "✅ Запись создана\n\n" + card + "\n\nОжидает подтверждения администратора.\n\nМои записи: /my_bookings"
   )
 }
 
@@ -1149,7 +1164,7 @@ export async function onConfirmReschedule(ctx: Context, scheduledAtIso: string):
     })
 
     await ctx.editMessageText(
-      "✅ Запись перенесена.\n\nНовая запись:\n" + newCard + "\n\nСтатус: ожидает подтверждения\n\nМои записи: /my_bookings"
+      "✅ Запись перенесена\n\n" + newCard + "\n\nОжидает подтверждения администратора.\n\nМои записи: /my_bookings"
     )
     await ctx.answerCallbackQuery().catch(() => {})
   } catch (e) {

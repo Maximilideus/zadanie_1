@@ -82,7 +82,7 @@ async function setTimeHandler(request: FastifyRequest<{ Body: TimeBody }>) {
   const booking = await bookingService.setScheduledAtByTelegramId(telegramId, scheduledAt)
   request.log.info(
     { bookingId: booking.id, scheduledAt },
-    "Booking time set, user state -> IDLE"
+    "Booking time set, Telegram session reset to IDLE"
   )
   return booking
 }

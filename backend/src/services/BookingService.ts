@@ -1,5 +1,6 @@
 import { Prisma, type BookingStatus as PrismaBookingStatus } from "@prisma/client"
 import { prisma } from "../lib/prisma"
+import { setTelegramState } from "../modules/telegram/telegram-session.service"
 import { BookingStatusMachine } from "../stateMachines/BookingStatusMachine"
 import { assertElectroServiceBookable } from "./electroBookingGuard"
 
@@ -60,6 +61,38 @@ export class BookingService {
     }
   }
 
+  /**
+   * Create a PENDING shell booking for Telegram by customer only (Phase 5).
+   * No userId; duplicate protection by customerId.
+   */
+  async createBookingForCustomer(
+    customerId: string,
+    options?: { source?: "BOT" }
+  ) {
+    const active = await prisma.booking.findFirst({
+      where: {
+        customerId,
+        status: { in: ["PENDING", "CONFIRMED"] },
+      },
+    })
+    if (active) {
+      throw new Error("ACTIVE_BOOKING_EXISTS")
+    }
+    try {
+      return await prisma.booking.create({
+        data: {
+          userId: undefined,
+          customerId,
+          status: "PENDING",
+          source: options?.source ?? "BOT",
+        },
+        select: bookingSelect,
+      })
+    } catch (e) {
+      handlePrismaError(e)
+    }
+  }
+
   async confirmBooking(bookingId: string) {
     return this.updateBookingStatus(bookingId, "CONFIRMED", {
       confirmedAt: new Date(),
@@ -82,15 +115,15 @@ export class BookingService {
   }
 
   /**
-   * Resolve current pending Telegram booking: customer-first with user fallback (Phase 2).
-   * User is still required (for state). Returns userId for setScheduledAtByTelegramId state update.
+   * Resolve current pending Telegram booking: customer-first with user fallback (Phase 5).
+   * Requires at least Customer or User; returns bookingId (and userId for legacy).
    */
-  private async getPendingBookingByTelegramId(telegramId: string) {
+  private async getPendingBookingByTelegramId(telegramId: string): Promise<{ bookingId: string; userId?: string | null }> {
     const [user, customer] = await Promise.all([
       prisma.user.findUnique({ where: { telegramId }, select: { id: true } }),
       prisma.customer.findUnique({ where: { telegramId: String(telegramId) }, select: { id: true } }),
     ])
-    if (!user) throw new Error("NOT_FOUND")
+    if (!user && !customer) throw new Error("NOT_FOUND")
 
     let booking: { id: string } | null = null
     if (customer) {
@@ -99,14 +132,14 @@ export class BookingService {
         select: { id: true },
       })
     }
-    if (!booking) {
+    if (!booking && user) {
       booking = await prisma.booking.findFirst({
         where: { userId: user.id, status: "PENDING" },
         select: { id: true },
       })
     }
     if (!booking) throw new Error("NO_PENDING_BOOKING")
-    return { userId: user.id, bookingId: booking.id }
+    return { bookingId: booking.id, userId: user?.id ?? null }
   }
 
   private async getPendingBookingWithService(bookingId: string) {
@@ -177,7 +210,7 @@ export class BookingService {
     if (Number.isNaN(parsed.getTime())) {
       throw new Error("INVALID_SCHEDULED_AT")
     }
-    const { userId, bookingId } = await this.getPendingBookingByTelegramId(telegramId)
+    const { bookingId } = await this.getPendingBookingByTelegramId(telegramId)
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
       select: { masterId: true },
@@ -192,18 +225,15 @@ export class BookingService {
       }
     }
     try {
-      return await prisma.$transaction(async (tx) => {
-        const updated = await tx.booking.update({
+      const updated = await prisma.$transaction(async (tx) => {
+        return await tx.booking.update({
           where: { id: bookingId },
           data: { scheduledAt: parsed, confirmedAt: null },
           select: bookingSelect,
         })
-        await tx.user.update({
-          where: { id: userId },
-          data: { state: "IDLE" },
-        })
-        return updated
       })
+      await setTelegramState(telegramId, "IDLE")
+      return updated
     } catch (e) {
       handlePrismaError(e)
     }

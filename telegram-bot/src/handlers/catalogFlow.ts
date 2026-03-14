@@ -15,6 +15,7 @@ import {
   type BookingSession,
 } from "./bookingFlow.js"
 import { formatServiceDisplayName } from "../services/formatters.js"
+import { formatCatalogIntro } from "../services/deeplink.js"
 
 export type CategorySlug = "laser" | "wax" | "electro" | "massage"
 
@@ -274,7 +275,7 @@ export async function onCatalogItemChosen(ctx: Context, catalogItemId: string): 
 
   const introText = durationChanged
     ? "Зона изменена. Выберите мастера и время заново."
-    : buildCatalogIntro(item)
+    : formatCatalogIntro(item)
 
   await startWizardWithService(
     ctx,
@@ -454,7 +455,7 @@ export async function onElectroZoneSelected(
 
   setBookingSession(from.id, { catalogElectroZone: item.titleRu })
 
-  const introText = buildCatalogIntro(item)
+  const introText = formatCatalogIntro(item)
   await startWizardWithService(
     ctx,
     item.service.id,
@@ -555,28 +556,6 @@ export async function onConsultationChosen(ctx: Context, slug: string): Promise<
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-function buildCatalogIntro(item: {
-  category: string
-  titleRu: string
-  price: number | null
-  durationMin: number | null
-  groupKey?: string | null
-}): string {
-  const isElectroTime = item.category === "ELECTRO" && item.groupKey === "time"
-  const lines = ["Вы выбрали:", ""]
-  if (isElectroTime) {
-    lines.push("📋 Услуга: Электроэпиляция")
-    if (item.durationMin != null) lines.push(`⏱ Длительность: ${item.durationMin} мин`)
-  } else {
-    const category = CATEGORY_LABEL_RU[item.category.toLowerCase()] ?? item.category
-    lines.push(category)
-    lines.push(`Зона: ${item.titleRu}`)
-    if (item.durationMin != null) lines.push(`Длительность: ${item.durationMin} мин`)
-  }
-  if (item.price != null) lines.push(`Цена: ${item.price} ₽`)
-  return lines.join("\n")
-}
 
 async function editOrSend(
   ctx: Context,

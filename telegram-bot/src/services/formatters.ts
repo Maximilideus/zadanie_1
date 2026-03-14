@@ -46,6 +46,35 @@ export function stripTrailingDuration(s: string): string {
   return (s ?? "").replace(/\s*—\s*\d+\s*мин\s*$/i, "").trim() || (s ?? "")
 }
 
+/** Category (ELECTRO/LASER/WAX/MASSAGE) → procedure type for "Услуга" line. */
+const CATEGORY_TO_PROCEDURE: Record<string, string> = {
+  ELECTRO: "Электроэпиляция",
+  LASER: "Лазерная эпиляция",
+  WAX: "Восковая депиляция",
+  MASSAGE: "Массаж",
+}
+
+/** Normalize category for display logic (e.g. laser -> LASER). ELECTRO is time-only, never show zone. */
+export function normalizeCategory(category?: string): string | undefined {
+  if (category == null || category === "") return undefined
+  const u = category.trim().toUpperCase()
+  return u in CATEGORY_TO_PROCEDURE ? u : undefined
+}
+
+/**
+ * Procedure type for session-based card. Prefers category so zone is never shown as "Услуга".
+ * For MASSAGE, uses stripped serviceName to preserve subtype (e.g. Релакс-массаж).
+ * Category is normalized before lookup (laser -> LASER).
+ */
+export function getProcedureTypeForSession(category?: string, serviceName?: string): string {
+  const cat = normalizeCategory(category)
+  if (cat === "MASSAGE" && serviceName) {
+    return stripTrailingDuration(serviceName) || CATEGORY_TO_PROCEDURE.MASSAGE
+  }
+  if (cat && CATEGORY_TO_PROCEDURE[cat]) return CATEGORY_TO_PROCEDURE[cat]
+  return stripTrailingDuration(serviceName ?? "—") || "—"
+}
+
 /**
  * Short labels for inline keyboard buttons (mobile-friendly).
  * Keeps full names for confirmation/summaries.
@@ -106,32 +135,67 @@ export type BookingCardInput = {
   scheduledAt: Date | string
 }
 
+/** Parts for the unified booking block. procedureType = type of procedure (e.g. Электроэпиляция); zone = body zone when applicable. */
+export type BookingBlockParts = {
+  procedureType: string
+  zone?: string
+  durationMin?: number
+  masterName: string
+  date: string
+  time: string
+  /** ELECTRO is time-only: never render a zone line (business rule). */
+  suppressZone?: boolean
+  price?: number
+  status?: string
+}
+
 /**
- * Single reusable booking card format. Uses backend displayName when present;
- * otherwise formatServiceNameOnly(service) so no raw internal names like "Electro 15 min".
+ * Single unified booking block format. Used everywhere: wizard summary, confirmation,
+ * success, reschedule, cancel, booking list, nearest slot.
+ * Order: date, time, blank, service (procedure type), zone (if any, never for ELECTRO), duration (if any), master, optional price/status.
+ * ELECTRO: service + duration only; zone line is never shown.
+ */
+export function formatBookingBlock(parts: BookingBlockParts): string {
+  const lines: string[] = []
+  lines.push(`📅 ${parts.date}`)
+  lines.push(`⏰ ${parts.time}`)
+  lines.push("")
+  lines.push(`📋 Услуга: ${parts.procedureType}`)
+  if (!parts.suppressZone && parts.zone) lines.push(`📍 Зона: ${parts.zone}`)
+  if (parts.durationMin != null) lines.push(`⏱ Длительность: ${parts.durationMin} мин`)
+  lines.push("")
+  lines.push(`👩‍⚕️ Мастер: ${parts.masterName}`)
+  if (parts.price != null) lines.push(`💳 Цена: ${parts.price.toLocaleString("ru-RU")} ₽`)
+  if (parts.status != null) lines.push(`Статус: ${parts.status}`)
+  return lines.join("\n")
+}
+
+/**
+ * Booking card: always shows procedure type on "Услуга" line (never zone).
+ * Uses service.name to derive procedure type; zone from service.zone.
+ * ELECTRO: never show zone line (time-based only).
  */
 export function formatBookingCard(booking: BookingCardInput): string {
-  const serviceName =
-    (booking.service as { displayName?: string }).displayName ??
-    formatServiceNameOnly(booking.service)
-  const zone = (booking.service as { zone?: string }).zone
+  const procedureType = formatServiceNameOnly(booking.service)
+  const rawName = (booking.service.name ?? "").trim()
+  const isElectro = rawName.toLowerCase().startsWith("electro")
+  const zone = isElectro ? undefined : (booking.service as { zone?: string }).zone
   const durationMin = booking.service.durationMin
-  const isElectroTimePackage = (booking.service as { isElectroTimePackage?: boolean }).isElectroTimePackage
   const master = formatMasterDisplayName(booking.masterName)
   const date = formatBookingDate(booking.scheduledAt)
   const time = formatBookingTime(booking.scheduledAt)
-  return formatBookingCardFromParts({
-    serviceName,
+  return formatBookingBlock({
+    procedureType,
     zone,
     durationMin,
-    isElectroTimePackage,
+    suppressZone: isElectro,
     masterName: master,
     date,
     time,
   })
 }
 
-/** Same card format from pre-formatted parts (e.g. from session). */
+/** Same block from pre-formatted parts (e.g. from session). serviceName here is the procedure type. */
 export function formatBookingCardFromParts(parts: {
   serviceName: string
   zone?: string
@@ -139,25 +203,17 @@ export function formatBookingCardFromParts(parts: {
   masterName: string
   date: string
   time: string
-  /** ELECTRO time-based service: use "Пакет времени" instead of "Зона" */
-  isElectroTimePackage?: boolean
+  suppressZone?: boolean
 }): string {
-  const serviceLines: string[] = []
-  if (parts.isElectroTimePackage && parts.zone) {
-    serviceLines.push(`🗂 Пакет времени: ${parts.zone}`)
-  } else {
-    serviceLines.push(`📋 Услуга: ${parts.serviceName}`)
-    if (parts.zone) serviceLines.push(`📍 Зона: ${parts.zone}`)
-  }
-  if (parts.durationMin != null) serviceLines.push(`⏱ Длительность: ${parts.durationMin} мин`)
-  const lines: string[] = [
-    ...serviceLines,
-    "",
-    `👩‍⚕️ Мастер: ${parts.masterName}`,
-    `📅 Дата: ${parts.date}`,
-    `⏰ Время: ${parts.time}`,
-  ]
-  return lines.join("\n")
+  return formatBookingBlock({
+    procedureType: parts.serviceName,
+    zone: parts.zone,
+    durationMin: parts.durationMin,
+    masterName: parts.masterName,
+    date: parts.date,
+    time: parts.time,
+    suppressZone: parts.suppressZone,
+  })
 }
 
 const MASTER_NAME_MAP: Record<string, string> = {
@@ -172,7 +228,7 @@ export function formatMasterDisplayName(master: MasterLike | string): string {
 }
 
 function extractDurationMin(name: string): number | undefined {
-  const m = /(\\d+)\\s*min\\s*$/i.exec(name.trim())
+  const m = /(\d+)\s*min\s*$/i.exec(name.trim())
   if (!m) return undefined
   const v = Number(m[1])
   return Number.isFinite(v) ? v : undefined

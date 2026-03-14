@@ -346,6 +346,15 @@ enum BookingSource {
   ADMIN
 }
 
+/// Telegram conversational flow state (IDLE | CONSULTING | BOOKING_FLOW | BOOKED). Keyed by telegramId; source of truth for bot state (Phase 4).
+model TelegramSession {
+  id         String   @id @default(uuid())
+  telegramId String   @unique
+  state      String   @default("IDLE")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 model Customer {
   id               String   @id @default(uuid())
   name             String

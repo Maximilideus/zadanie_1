@@ -1,73 +1,34 @@
-import crypto from "node:crypto"
+import { createBooking } from "../booking/booking.service"
 import { prisma } from "../../lib/prisma"
-import { hashPassword } from "../auth/auth.service"
-import { changeUserState, type UserState } from "../user/state.service"
 import type { TelegramState } from "./telegram.schema"
+import { getOrCreateTelegramSession, setTelegramState } from "./telegram-session.service"
 
-export async function findOrCreateByTelegram(telegramId: string, name?: string) {
-  const existing = await prisma.user.findUnique({
+/** Find user by telegramId only if present (legacy; used for BOOKED transition if ever sent). */
+async function findUserByTelegramId(telegramId: string) {
+  return prisma.user.findUnique({
     where: { telegramId },
-    select: { id: true, state: true },
+    select: { id: true },
   })
-
-  if (existing) {
-    return { userId: existing.id, state: existing.state }
-  }
-
-  const email = `telegram_${telegramId}@local.dev`
-  const password = crypto.randomUUID()
-  const hashedPassword = await hashPassword(password)
-
-  const newUser = await prisma.user.create({
-    data: {
-      name: name?.trim() || "Telegram User",
-      email,
-      password: hashedPassword,
-      role: "CLIENT",
-      state: "IDLE",
-      telegramId,
-    },
-    select: { id: true, state: true },
-  })
-
-  return { userId: newUser.id, state: newUser.state }
 }
 
-/** Find user by telegramId; if missing (e.g. fresh DB), create with default CLIENT/IDLE. */
-async function findOrCreateUserByTelegramId(telegramId: string) {
-  const existing = await prisma.user.findUnique({
-    where: { telegramId },
-    select: { id: true, state: true },
-  })
-  if (existing) return existing
-
-  const email = `telegram_${telegramId}@local.dev`
-  const password = crypto.randomUUID()
-  const hashedPassword = await hashPassword(password)
-
-  const newUser = await prisma.user.create({
-    data: {
-      name: "Telegram User",
-      email,
-      password: hashedPassword,
-      role: "CLIENT",
-      state: "IDLE",
-      telegramId,
-    },
-    select: { id: true, state: true },
-  })
-  return newUser
+/** POST /telegram/auth: state from TelegramSession only; no User required (Phase 5). */
+export async function findOrCreateByTelegram(telegramId: string, _name?: string) {
+  const session = await getOrCreateTelegramSession(telegramId)
+  return { userId: null, state: session.state }
 }
 
 /**
  * PATCH /telegram/state: telegram-safe state transition.
- * Creates user if not found, then applies UserStateMachine rules.
+ * Reads/writes TelegramSession only. BOOKED branch: legacy only (creates booking via User if present); bot does not send BOOKED.
  */
 export async function updateStateByTelegramId(
   telegramId: string,
   newState: TelegramState
 ): Promise<{ ok: true; state: string }> {
-  const user = await findOrCreateUserByTelegramId(telegramId)
-  const result = await changeUserState(user.id, newState as UserState)
+  if (newState === "BOOKED") {
+    const user = await findUserByTelegramId(telegramId)
+    if (user) await createBooking(user.id)
+  }
+  const result = await setTelegramState(telegramId, newState)
   return { ok: true, state: result.newState }
 }
